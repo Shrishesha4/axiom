@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
@@ -114,14 +114,10 @@ export function LibraryGooeyBrowser() {
   const isSafari = browser === "Safari";
   const groups = useMemo(() => groupSessionsByDay(recent), [recent]);
   const [activeTab, setActiveTab] = useState(0);
+  const currentTab =
+    groups.length === 0 ? 0 : Math.min(activeTab, groups.length - 1);
 
   const actions = useSessionLibraryActions();
-
-  useEffect(() => {
-    if (activeTab >= groups.length) {
-      setActiveTab(Math.max(0, groups.length - 1));
-    }
-  }, [activeTab, groups.length]);
 
   if (!recentLoaded) {
     return (
@@ -139,7 +135,7 @@ export function LibraryGooeyBrowser() {
     );
   }
 
-  const activeGroup = groups[activeTab] ?? groups[0];
+  const activeGroup = groups[currentTab] ?? groups[0];
   const gooeyStrength = screenSize.lessThan("md") ? 8 : 12;
   const springDuration = isSafari ? 0 : 0.4;
 
@@ -160,7 +156,7 @@ export function LibraryGooeyBrowser() {
                 key={group.key}
                 className="relative h-10 min-w-[5.5rem] flex-1 md:h-12 md:min-w-[7rem]"
               >
-                {activeTab === index ? (
+                {currentTab === index ? (
                   <motion.div
                     layoutId="library-active-tab"
                     className="absolute inset-0 rounded-t-2xl bg-[#eef0f0]"
@@ -237,7 +233,7 @@ export function LibraryGooeyBrowser() {
                 <span
                   className={cn(
                     "flex h-full w-full flex-col items-center justify-center text-xs font-medium transition-colors md:text-sm",
-                    activeTab === index ? "text-foreground" : "text-muted-foreground",
+                    currentTab === index ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   <span className="truncate">{group.title}</span>

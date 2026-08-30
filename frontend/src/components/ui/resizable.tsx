@@ -59,8 +59,11 @@ function ResizablePanelGroup({
   // during the initial client render (to match SSR, which has no localStorage)
   // would otherwise make that first render diverge from the server-rendered
   // HTML and trigger a hydration mismatch (React error #418).
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   if (persistId && mounted) {
     return (

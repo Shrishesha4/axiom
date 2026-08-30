@@ -1,20 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+function detectBrowser() {
+  if (typeof navigator === "undefined") return "Other";
+
+  const ua = navigator.userAgent;
+  if (/safari/i.test(ua) && !/chrome|chromium|crios/i.test(ua)) {
+    return "Safari";
+  }
+  if (/firefox|fxios/i.test(ua)) {
+    return "Firefox";
+  }
+  if (/chrome|chromium|crios/i.test(ua)) {
+    return "Chrome";
+  }
+  return "Other";
+}
+
+function subscribe() {
+  return () => {};
+}
 
 export default function useDetectBrowser() {
-  const [browser, setBrowser] = useState("Other");
-
-  useEffect(() => {
-    const ua = navigator.userAgent;
-    if (/safari/i.test(ua) && !/chrome|chromium|crios/i.test(ua)) {
-      setBrowser("Safari");
-    } else if (/firefox|fxios/i.test(ua)) {
-      setBrowser("Firefox");
-    } else if (/chrome|chromium|crios/i.test(ua)) {
-      setBrowser("Chrome");
-    }
-  }, []);
-
-  return browser;
+  return useSyncExternalStore(subscribe, detectBrowser, () => "Other");
 }

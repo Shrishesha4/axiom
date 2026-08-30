@@ -185,19 +185,22 @@ function SourceCard({
     if (!open) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    getSourceData(investigationId, source.key)
-      .then((result) => {
+    void (async () => {
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
+
+      try {
+        const result = await getSourceData(investigationId, source.key);
         if (!cancelled) setData(result);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setError("Failed to load source data");
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;

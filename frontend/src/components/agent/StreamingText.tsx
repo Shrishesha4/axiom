@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -25,17 +25,14 @@ export function StreamingText({
   const streamingRef = useRef(isStreaming);
   const frameRef = useRef<number | null>(null);
 
-  streamingRef.current = isStreaming;
-  targetRef.current = content;
-
-  const stopLoop = () => {
+  const stopLoop = useCallback(() => {
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
-  };
+  }, []);
 
-  const startLoop = () => {
+  const startLoop = useCallback(() => {
     if (frameRef.current !== null || prefersReducedMotion) return;
 
     const tick = () => {
@@ -63,13 +60,16 @@ export function StreamingText({
     };
 
     frameRef.current = requestAnimationFrame(tick);
-  };
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    targetRef.current = content;
+    streamingRef.current = isStreaming;
+  }, [content, isStreaming]);
 
   useEffect(() => {
     if (prefersReducedMotion) {
       stopLoop();
-      displayedRef.current = content;
-      setDisplayed(content);
       return;
     }
 
@@ -79,13 +79,18 @@ export function StreamingText({
     }
 
     startLoop();
-
     return stopLoop;
-  }, [content, isStreaming, prefersReducedMotion]);
+  }, [content, isStreaming, prefersReducedMotion, startLoop, stopLoop]);
 
-  const showCursor =
-    !prefersReducedMotion &&
-    (isStreaming || displayed.length < content.length);
+  if (prefersReducedMotion) {
+    return (
+      <p className={cn("whitespace-pre-wrap leading-relaxed", className)}>
+        {content}
+      </p>
+    );
+  }
+
+  const showCursor = isStreaming || displayed.length < content.length;
 
   return (
     <p className={cn("whitespace-pre-wrap leading-relaxed", className)}>

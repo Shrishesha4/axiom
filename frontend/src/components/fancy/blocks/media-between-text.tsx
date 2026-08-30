@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
 import {
   motion,
   useInView,
@@ -112,7 +113,7 @@ export const MediaBetweenText = forwardRef<MediaBetweenTextRef, MediaBetweenText
           {firstText}
         </TextComponent>
         <motion.div
-          className={mediaContainerClassName}
+          className={cn("relative", mediaContainerClassName)}
           variants={animationVariants}
           initial="initial"
           animate={shouldAnimate ? "animate" : "initial"}
@@ -129,10 +130,13 @@ export const MediaBetweenText = forwardRef<MediaBetweenTextRef, MediaBetweenText
               <source src={mediaUrl} type="video/mp4" />
             </video>
           ) : (
-            <img
+            <Image
               src={mediaUrl}
               alt={alt || `${firstText} ${secondText}`}
-              className="h-full w-full object-cover"
+              fill
+              unoptimized
+              sizes="200px"
+              className="object-cover"
             />
           )}
         </motion.div>

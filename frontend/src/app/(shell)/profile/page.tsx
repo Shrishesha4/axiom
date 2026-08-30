@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { ScrollContainer } from "@/components/ScrollContainer";
 import { UserAvatar } from "@/components/user/UserAvatar";
@@ -34,19 +34,16 @@ async function resizeImage(file: File, maxSize = 256): Promise<File> {
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
-  const [name, setName] = useState("");
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    setName(user.name);
-  }, [user]);
-
   if (!user) return null;
+
+  const name = nameDraft ?? user.name;
 
   const usagePct =
     user.role === "admin"
@@ -63,6 +60,7 @@ export default function ProfilePage() {
       const token = getToken();
       if (token) setAuth(token, updated);
       await refreshUser();
+      setNameDraft(null);
       setMessage("Profile updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update profile");
@@ -162,7 +160,7 @@ export default function ProfilePage() {
               <CardContent className="space-y-3">
                 <Input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setNameDraft(e.target.value)}
                   className="rounded-xl bg-[#f5f6f6]"
                 />
                 <Button

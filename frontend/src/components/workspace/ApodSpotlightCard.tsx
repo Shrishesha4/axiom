@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { useSyncExternalStore } from "react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -13,6 +15,10 @@ interface ApodSpotlightCardProps {
   className?: string;
 }
 
+function subscribe() {
+  return () => {};
+}
+
 export function ApodSpotlightCard({
   apod,
   mediaWidth,
@@ -20,13 +26,7 @@ export function ApodSpotlightCard({
   className,
 }: ApodSpotlightCardProps) {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setTimeout(() => {
-      setMounted(true);
-    }, 100);
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   useEffect(() => {
     if (!open) return;
@@ -59,13 +59,15 @@ export function ApodSpotlightCard({
           <button
             type="button"
             aria-label={`Expand NASA image: ${apod.title}`}
-            className="h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="relative h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             onClick={() => setOpen((value) => !value)}
           >
-            <img
+            <Image
               src={apod.mediaUrl}
               alt={apod.title}
-              className="h-full w-full object-cover"
+              fill
+              sizes="(max-width: 640px) 72px, 140px"
+              className="object-cover"
               draggable={false}
             />
           </button>
@@ -115,11 +117,14 @@ export function ApodSpotlightCard({
                   exit={{ opacity: 0, scale: 0.97, y: 10 }}
                   transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <img
+                  <Image
                     src={apod.mediaUrl}
                     alt={apod.title}
-                    className="max-h-[min(68vh,720px)] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/10"
-                    draggable={false}
+                    width={1600}
+                    height={900}
+                    sizes="(max-width: 768px) 100vw, 80vw"
+                    className="h-auto max-h-[min(68vh,720px)] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/10"
+                    priority
                   />
 
                   <div className="max-w-2xl space-y-2 px-2 text-white">

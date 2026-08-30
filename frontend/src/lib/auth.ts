@@ -40,6 +40,17 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY);
 }
 
+let sessionExpiredHandler: (() => void) | null = null;
+
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  sessionExpiredHandler = handler;
+}
+
+export function handleSessionExpired() {
+  clearAuth();
+  sessionExpiredHandler?.();
+}
+
 export function authHeaders(): HeadersInit {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};

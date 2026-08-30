@@ -1,4 +1,4 @@
-import { authHeaders } from "@/lib/auth";
+import { authHeaders, handleSessionExpired } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -13,9 +13,7 @@ async function apiFetch(path: string, options: RequestInit = {}) {
   });
   if (res.status === 401) {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("axiom_token");
-      localStorage.removeItem("axiom_user");
-      window.location.href = "/login";
+      handleSessionExpired();
     }
     throw new Error("Session expired");
   }
@@ -554,9 +552,7 @@ export async function uploadAvatar(file: File): Promise<import("@/lib/auth").Aut
   });
   if (res.status === 401) {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("axiom_token");
-      localStorage.removeItem("axiom_user");
-      window.location.href = "/login";
+      handleSessionExpired();
     }
     throw new Error("Session expired");
   }

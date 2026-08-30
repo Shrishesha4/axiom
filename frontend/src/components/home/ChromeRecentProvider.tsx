@@ -42,8 +42,31 @@ export function ChromeRecentProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   useEffect(() => {
-    void refreshRecent();
-  }, [refreshRecent]);
+    let cancelled = false;
+
+    void (async () => {
+      if (!user) {
+        if (!cancelled) {
+          setRecent([]);
+          setRecentLoaded(true);
+        }
+        return;
+      }
+
+      try {
+        const data = await listInvestigations();
+        if (!cancelled) setRecent(data);
+      } catch {
+        if (!cancelled) setRecent([]);
+      } finally {
+        if (!cancelled) setRecentLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const value = useMemo(
     () => ({ recent, recentLoaded, setRecent, refreshRecent }),

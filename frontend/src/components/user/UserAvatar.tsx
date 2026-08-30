@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { userInitials } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/auth";
@@ -21,15 +22,22 @@ export function UserAvatar({ user, size = "md", className }: UserAvatarProps) {
 
   if (user.avatar_url) {
     return (
-      <img
-        src={user.avatar_url}
-        alt={user.name}
+      <div
         className={cn(
-          "rounded-full object-cover ring-2 ring-white shadow-sm",
+          "relative overflow-hidden rounded-full ring-2 ring-white shadow-sm",
           sizeClasses[size],
           className,
         )}
-      />
+      >
+        <Image
+          src={user.avatar_url}
+          alt={user.name}
+          fill
+          unoptimized
+          sizes="64px"
+          className="object-cover"
+        />
+      </div>
     );
   }
 

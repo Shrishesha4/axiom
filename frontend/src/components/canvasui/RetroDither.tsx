@@ -930,7 +930,7 @@ export function RetroDither({
       instanceRef.current?.destroy();
       instanceRef.current = null;
     };
-  }, [initialOptions]);
+  }, [initialOptions, listenTargetRef]);
 
   useEffect(() => {
     instanceRef.current?.setOptions(options);

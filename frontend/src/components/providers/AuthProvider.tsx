@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,6 +16,7 @@ import {
   getStoredUser,
   getToken,
   setAuth,
+  setSessionExpiredHandler,
 } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -32,16 +34,22 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_PATHS = ["/login", "/signup"];
 
+function subscribe() {
+  return () => {};
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Must start `null` on every render, matching the server (which has no
   // localStorage) — seeding this from getStoredUser() in a lazy initializer
   // would make the client's first hydration pass diverge from the
   // server-rendered HTML wherever `user` gates output (e.g. AppHeader),
   // triggering a hydration mismatch (React error #418).
+  const storedUser = useSyncExternalStore(subscribe, getStoredUser, () => null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const activeUser = user ?? storedUser;
 
   const fetchCurrentUser = useCallback(async (): Promise<AuthUser | null> => {
     const token = getToken();
@@ -63,10 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchCurrentUser]);
 
   useEffect(() => {
-    // Runs post-hydration (client-only) — safe to read localStorage here.
-    const stored = getStoredUser();
-    if (stored) setUser(stored);
-  }, []);
+    setSessionExpiredHandler(() => {
+      router.replace("/login");
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,12 +93,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     const isPublic = PUBLIC_PATHS.includes(pathname);
-    if (!user && !isPublic) {
+    if (!activeUser && !isPublic) {
       router.replace("/login");
-    } else if (user && isPublic) {
+    } else if (activeUser && isPublic) {
       router.replace("/");
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, activeUser, pathname, router]);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${API_URL}/api/auth/login`, {
@@ -130,8 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const value = useMemo(
-    () => ({ user, loading, login, signup, logout, refreshUser }),
-    [user, loading, login, signup, logout, refreshUser]
+    () => ({ user: activeUser, loading, login, signup, logout, refreshUser }),
+    [activeUser, loading, login, signup, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
