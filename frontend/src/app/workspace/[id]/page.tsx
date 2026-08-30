@@ -1,0 +1,307 @@
+"use client";
+
+import { useEffect, useState, useCallback, useMemo, useRef, startTransition } from "react";
+import { useParams } from "next/navigation";
+import { FileText, Swords } from "lucide-react";
+import {
+  getInvestigation,
+  streamInvestigation,
+  streamDebate,
+  streamDraftMemo,
+  getBriefing,
+  type InvestigationSummary,
+  type TraceEvent,
+  type FollowUp,
+  type DebateResult,
+  type MemoEntry,
+} from "@/lib/api";
+import { AppHeader } from "@/components/AppHeader";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { AgentPanel } from "@/components/agent/AgentPanel";
+import { WorkspaceResizableLayout } from "@/components/workspace/WorkspaceResizableLayout";
+import { SourcesPanel } from "@/components/workspace/SourcesPanel";
+import { InvestigationDashboard } from "@/components/workspace/InvestigationDashboard";
+import { BriefingModal } from "@/components/BriefingModal";
+import { DebateModal } from "@/components/DebateModal";
+import { DocumentModal } from "@/components/DocumentModal";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+
+type TraceStep = {
+  step: string;
+  status: string;
+  message: string;
+  timestamp?: string;
+};
+
+export default function WorkspacePage() {
+  const params = useParams();
+  const id = Number(params.id);
+  const { refreshUser } = useAuth();
+
+  const [query, setQuery] = useState("");
+  const [summary, setSummary] = useState<InvestigationSummary | null>(null);
+  const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
+  const [isRunning, setIsRunning] = useState(true);
+  const [highlightMechanism, setHighlightMechanism] = useState<string | null>(null);
+  const [showBriefing, setShowBriefing] = useState(false);
+  const [briefingContent, setBriefingContent] = useState("");
+  const [followups, setFollowups] = useState<FollowUp[]>([]);
+  const [savedDebate, setSavedDebate] = useState<DebateResult | undefined>(undefined);
+  const [showDebate, setShowDebate] = useState(false);
+  const [debateBull, setDebateBull] = useState("");
+  const [debateBear, setDebateBear] = useState("");
+  const [debateSynthesis, setDebateSynthesis] = useState("");
+  const [isDebating, setIsDebating] = useState(false);
+  const [savedMemos, setSavedMemos] = useState<Record<string, MemoEntry>>({});
+  const [showMemo, setShowMemo] = useState(false);
+  const [memoTherapyName, setMemoTherapyName] = useState("");
+  const [memoContent, setMemoContent] = useState("");
+  const [isMemoStreaming, setIsMemoStreaming] = useState(false);
+
+  const traceMapRef = useRef<Map<string, TraceStep>>(new Map());
+  const traceFlushRef = useRef<number | null>(null);
+
+  const flushTraceSteps = useCallback(() => {
+    traceFlushRef.current = null;
+    setTraceSteps(Array.from(traceMapRef.current.values()));
+  }, []);
+
+  const queueTraceUpdate = useCallback(
+    (event: TraceEvent) => {
+      if (event.type !== "trace" || !event.step || !event.message) return;
+
+      traceMapRef.current.set(event.step, {
+        step: event.step,
+        status: event.status || "running",
+        message: event.message,
+        timestamp: event.timestamp,
+      });
+
+      if (traceFlushRef.current === null) {
+        traceFlushRef.current = window.requestAnimationFrame(flushTraceSteps);
+      }
+    },
+    [flushTraceSteps]
+  );
+
+  const handleEvent = useCallback(
+    (event: TraceEvent) => {
+      if (event.type === "trace") {
+        queueTraceUpdate(event);
+        return;
+      }
+
+      if (event.type === "complete" && event.data) {
+        setIsRunning(false);
+        startTransition(() => {
+          setSummary(event.data ?? null);
+        });
+      }
+    },
+    [queueTraceUpdate]
+  );
+
+  useEffect(() => {
+    if (!id) return;
+
+    let cleanup: (() => void) | undefined;
+    traceMapRef.current = new Map();
+
+    getInvestigation(id).then((inv) => {
+      setQuery(inv.query);
+      setFollowups(inv.followups || []);
+      setSavedDebate(inv.debate);
+      setSavedMemos(inv.memos || {});
+      if (inv.summary) {
+        setSummary(inv.summary);
+        setIsRunning(false);
+        return;
+      }
+
+      cleanup = streamInvestigation(
+        id,
+        handleEvent,
+        () => {
+          setIsRunning(false);
+          refreshUser();
+        },
+        () => setIsRunning(false)
+      );
+    });
+
+    return () => {
+      if (traceFlushRef.current !== null) {
+        window.cancelAnimationFrame(traceFlushRef.current);
+      }
+      cleanup?.();
+    };
+  }, [id, handleEvent, refreshUser]);
+
+  const handleBriefing = useCallback(async () => {
+    const content = await getBriefing(id);
+    setBriefingContent(content);
+    setShowBriefing(true);
+  }, [id]);
+
+  const handleDebate = useCallback(async () => {
+    if (savedDebate) {
+      setDebateBull(savedDebate.bull);
+      setDebateBear(savedDebate.bear);
+      setDebateSynthesis(savedDebate.synthesis);
+      setShowDebate(true);
+      return;
+    }
+
+    setDebateBull("");
+    setDebateBear("");
+    setDebateSynthesis("");
+    setShowDebate(true);
+    setIsDebating(true);
+
+    await streamDebate(
+      id,
+      (event) => {
+        if (event.type !== "delta") return;
+        if (event.side === "bull") setDebateBull((prev) => prev + event.content);
+        if (event.side === "bear") setDebateBear((prev) => prev + event.content);
+        if (event.side === "synthesis") setDebateSynthesis((prev) => prev + event.content);
+      },
+      () => {
+        setIsDebating(false);
+        getInvestigation(id).then((inv) => setSavedDebate(inv.debate));
+      },
+      () => setIsDebating(false)
+    );
+  }, [id, savedDebate]);
+
+  const handleDraftMemo = useCallback(
+    async (therapyName: string) => {
+      const cached = savedMemos[therapyName];
+      if (cached) {
+        setMemoTherapyName(therapyName);
+        setMemoContent(cached.content);
+        setShowMemo(true);
+        return;
+      }
+
+      setMemoTherapyName(therapyName);
+      setMemoContent("");
+      setShowMemo(true);
+      setIsMemoStreaming(true);
+
+      await streamDraftMemo(
+        id,
+        therapyName,
+        (event) => {
+          if (event.type === "delta") setMemoContent((prev) => prev + event.content);
+        },
+        () => {
+          setIsMemoStreaming(false);
+          getInvestigation(id).then((inv) => setSavedMemos(inv.memos || {}));
+        },
+        () => setIsMemoStreaming(false)
+      );
+    },
+    [id, savedMemos]
+  );
+
+  const sourcesPanel = useMemo(
+    () => <SourcesPanel investigationId={id} disabled={isRunning && !summary} />,
+    [id, isRunning, summary]
+  );
+
+  const mainPanel = useMemo(
+    () => (
+      <div className="p-6">
+        {isRunning && !summary && (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Spinner className="w-8 h-8 text-primary mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground">Generating intelligence...</p>
+            </div>
+          </div>
+        )}
+
+        {summary && (
+          <InvestigationDashboard
+            summary={summary}
+            query={query}
+            highlightMechanism={highlightMechanism}
+            onHighlight={setHighlightMechanism}
+            onDraftMemo={handleDraftMemo}
+          />
+        )}
+
+        {!summary && !isRunning && (
+          <p className="text-sm text-muted-foreground text-center py-12">No data available.</p>
+        )}
+      </div>
+    ),
+    [isRunning, summary, query, highlightMechanism, handleDraftMemo]
+  );
+
+  const agentPanel = useMemo(
+    () => (
+      <>
+        <div className="flex items-center justify-between p-4 pb-3 shrink-0">
+          <p className="text-xs text-muted-foreground uppercase tracking-widest">Agent</p>
+          {!isRunning && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="xs" onClick={handleBriefing}>
+                <FileText className="w-3.5 h-3.5" />
+                Briefing
+              </Button>
+              <Button variant="outline" size="xs" onClick={handleDebate}>
+                <Swords className="w-3.5 h-3.5" />
+                Debate
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4">
+          <AgentPanel
+            investigationId={id}
+            signals={summary?.signals || []}
+            traceSteps={traceSteps}
+            isRunning={isRunning}
+            savedFollowups={followups}
+            onHighlight={setHighlightMechanism}
+          />
+        </div>
+      </>
+    ),
+    [id, summary, traceSteps, isRunning, followups, handleBriefing, handleDebate]
+  );
+
+  return (
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-muted/20">
+      <AppHeader subtitle={query} className="shrink-0" />
+
+      <WorkspaceResizableLayout sources={sourcesPanel} main={mainPanel} agent={agentPanel} />
+
+      <BriefingModal
+        open={showBriefing}
+        content={briefingContent}
+        onClose={() => setShowBriefing(false)}
+      />
+
+      <DebateModal
+        open={showDebate}
+        bull={debateBull}
+        bear={debateBear}
+        synthesis={debateSynthesis}
+        isStreaming={isDebating}
+        onClose={() => setShowDebate(false)}
+      />
+
+      <DocumentModal
+        open={showMemo}
+        title={`BD memo — ${memoTherapyName}`}
+        content={memoContent || (isMemoStreaming ? "" : "No memo generated.")}
+        loading={isMemoStreaming}
+        onClose={() => setShowMemo(false)}
+      />
+    </div>
+  );
+}
