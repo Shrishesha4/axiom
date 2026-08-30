@@ -26,6 +26,17 @@ const PASSWORD_CHAR =
 const SPRING = { stiffness: 500, damping: 30, mass: 0.5 };
 const REDUCED_MOTION_SPRING = { stiffness: 10000, damping: 100, mass: 0.1 };
 
+const NATIVE_CARET_TYPES = new Set([
+  "number",
+  "date",
+  "datetime-local",
+  "time",
+  "month",
+  "week",
+  "color",
+  "range",
+]);
+
 export type SmoothCaretInputProps = ComponentPropsWithoutRef<"input"> & {
   wrapperClassName?: string;
 };
@@ -61,7 +72,11 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
       prefersReducedMotion ? REDUCED_MOTION_SPRING : SPRING,
     );
     const inputValue = isControlled ? String(value ?? "") : internalValue;
-    const showSmoothCaret = type !== "file" && type !== "hidden" && !readOnly;
+    const showSmoothCaret =
+      type !== "file" &&
+      type !== "hidden" &&
+      !readOnly &&
+      !NATIVE_CARET_TYPES.has(type);
 
     useImperativeHandle(forwardedRef, () => inputRef.current as HTMLInputElement);
 

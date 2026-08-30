@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatTraceTimestamp } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { memo } from "react";
 
@@ -42,9 +42,11 @@ export const AgentTrace = memo(function AgentTrace({ steps, isRunning }: AgentTr
             >
               {step.message}
             </p>
-            {step.timestamp && (
-              <p className="text-xs text-muted-foreground/60 font-mono">{step.timestamp}</p>
-            )}
+            {step.timestamp ? (
+              <p className="text-xs text-muted-foreground/60 font-mono">
+                {formatTraceTimestamp(step.timestamp)}
+              </p>
+            ) : null}
           </div>
         </div>
       ))}

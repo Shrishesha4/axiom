@@ -177,7 +177,7 @@ def get_investigation(
                 "step": t.step,
                 "status": t.status,
                 "message": t.message,
-                "timestamp": t.timestamp.strftime("%H:%M:%S"),
+                "timestamp": serialize_utc(t.timestamp),
             }
             for t in traces
         ],

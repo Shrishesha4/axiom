@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { removeAvatar, updateProfile, uploadAvatar } from "@/lib/api";
+import { formatDateOnly } from "@/lib/utils";
 import { setAuth, getToken } from "@/lib/auth";
 
 async function resizeImage(file: File, maxSize = 256): Promise<File> {
@@ -178,16 +179,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle>Usage</CardTitle>
                 <CardDescription>
-                  Member since{" "}
-                  {new Date(
-                    /[zZ]$|[+-]\d{2}:\d{2}$/.test(user.created_at)
-                      ? user.created_at
-                      : `${user.created_at}Z`,
-                  ).toLocaleDateString("en-US", {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
+                  Member since {formatDateOnly(user.created_at)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

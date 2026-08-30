@@ -10,6 +10,7 @@ export interface AuthUser {
   token_limit: number;
   tokens_used: number;
   tokens_remaining: number;
+  is_active: boolean;
   created_at: string;
 }
 

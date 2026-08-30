@@ -32,9 +32,9 @@ export default function LoginPage() {
       <div className="flex h-full items-center justify-center overflow-y-auto p-6 pointer-events-none">
       <Card className="pointer-events-auto w-full max-w-md shadow-sm">
         <CardHeader className="text-center">
-          <p className="text-xs font-semibold tracking-[0.2em] text-primary mb-2">axiom</p>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to your intelligence workspace</CardDescription>
+          <p className="text-4xl font-semibold tracking-[0.1em] text-primary mb-2">axiom</p>
+          <CardTitle className="text-2xl">Welcome</CardTitle>
+          <CardDescription>Sign in</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

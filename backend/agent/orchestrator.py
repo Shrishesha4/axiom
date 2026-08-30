@@ -19,6 +19,7 @@ from auth import record_token_usage
 from agent.openrouter_client import get_openrouter_client, openrouter_request_extras
 from config import get_settings
 from models.models import AgentTrace, Investigation, User
+from serialization import serialize_utc
 from services.live_data import infer_condition
 from services.dashboard import (
     build_dashboard_config,
@@ -104,7 +105,7 @@ def _system_prompt() -> str:
 
 
 def _timestamp() -> str:
-    return datetime.utcnow().strftime("%H:%M:%S")
+    return serialize_utc(datetime.utcnow())
 
 
 def _trace_event(step: str, status: str, message: str) -> dict:
@@ -171,7 +172,7 @@ async def _agent_tool_loop(
             db,
             investigation.id,
             "web_search",
-            "OpenRouter web search enabled",
+            "Searched the web",
             "complete",
         )
         yield _trace_event("web_search", "complete", "Web search context enabled")

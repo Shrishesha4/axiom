@@ -1,26 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useChromeRecent } from "@/components/home/ChromeRecentProvider";
-import { deleteInvestigation, updateInvestigation, type Investigation } from "@/lib/api";
+import { SessionLibraryDialogs } from "@/components/home/SessionLibraryDialogs";
+import { useSessionLibraryActions } from "@/components/home/useSessionLibraryActions";
+import { type Investigation } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+
+const HOME_LIBRARY_LIMIT = 6;
 
 type ContextMenuState = {
   x: number;
@@ -43,8 +39,6 @@ function SessionCardMenu({
   openRename: (session: Investigation) => void;
   openDelete: (session: Investigation) => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
   return (
     <div className="relative shrink-0">
       <Button
@@ -64,7 +58,6 @@ function SessionCardMenu({
 
       {menuOpenId === session.id ? (
         <div
-          ref={menuRef}
           data-session-menu
           className="absolute right-0 top-full z-30 mt-1 min-w-[140px] overflow-hidden rounded-xl border border-border/50 bg-white py-1 shadow-lg"
           onClick={(e) => e.stopPropagation()}
@@ -100,17 +93,30 @@ function SessionCardMenu({
   );
 }
 
-export function SessionLibrary() {
+export function SessionLibrary({ limit }: { limit?: number }) {
   const router = useRouter();
-  const { recent, recentLoaded, refreshRecent, setRecent } = useChromeRecent();
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
-  const [renameTarget, setRenameTarget] = useState<Investigation | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<Investigation | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { recent, recentLoaded } = useChromeRecent();
   const gridRef = useRef<HTMLDivElement>(null);
+  const sessions = limit ? recent.slice(0, limit) : recent;
+
+  const {
+    setMenuOpenId,
+    setContextMenu,
+    openRename,
+    openDelete,
+    menuOpenId,
+    contextMenu,
+    renameTarget,
+    renameValue,
+    deleteTarget,
+    busy,
+    error,
+    setRenameTarget,
+    setRenameValue,
+    setDeleteTarget,
+    handleRename,
+    handleDelete,
+  } = useSessionLibraryActions();
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -133,84 +139,7 @@ export function SessionLibrary() {
 
     grid.addEventListener("contextmenu", handleContextMenu);
     return () => grid.removeEventListener("contextmenu", handleContextMenu);
-  }, [recent]);
-
-  useEffect(() => {
-    const closeMenus = () => {
-      setMenuOpenId(null);
-      setContextMenu(null);
-    };
-    const closeOnClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (
-        target.closest("[data-session-menu]") ||
-        target.closest("[data-session-context-menu]") ||
-        target.closest("[data-session-card-actions]") ||
-        target.closest("[data-slot=dialog-content]") ||
-        target.closest("[data-slot=dialog-overlay]")
-      ) {
-        return;
-      }
-      closeMenus();
-    };
-    window.addEventListener("click", closeOnClick);
-    window.addEventListener("scroll", closeMenus, true);
-    return () => {
-      window.removeEventListener("click", closeOnClick);
-      window.removeEventListener("scroll", closeMenus, true);
-    };
-  }, []);
-
-  const handleRename = async () => {
-    if (!renameTarget || !renameValue.trim()) return;
-    const nextTitle = renameValue.trim();
-    setBusy(true);
-    setError("");
-    try {
-      const updated = await updateInvestigation(renameTarget.id, nextTitle);
-      setRecent(
-        recent.map((session) =>
-          session.id === updated.id ? { ...session, query: updated.query } : session,
-        ),
-      );
-      setRenameTarget(null);
-      await refreshRecent();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to rename");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setBusy(true);
-    setError("");
-    try {
-      await deleteInvestigation(deleteTarget.id);
-      setDeleteTarget(null);
-      await refreshRecent();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const openRename = (session: Investigation) => {
-    setMenuOpenId(null);
-    setContextMenu(null);
-    setRenameTarget(session);
-    setRenameValue(session.query);
-    setError("");
-  };
-
-  const openDelete = (session: Investigation) => {
-    setMenuOpenId(null);
-    setContextMenu(null);
-    setDeleteTarget(session);
-    setError("");
-  };
+  }, [recent, setMenuOpenId, setContextMenu]);
 
   if (!recentLoaded) {
     return (
@@ -228,78 +157,11 @@ export function SessionLibrary() {
     );
   }
 
-  const renameDialog = (
-    <Dialog
-      open={!!renameTarget}
-      onOpenChange={(open) => {
-        if (!open) setRenameTarget(null);
-      }}
-    >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Rename session</DialogTitle>
-          <DialogDescription>Give this investigation a shorter title.</DialogDescription>
-        </DialogHeader>
-        <Input
-          value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void handleRename();
-            }
-          }}
-          autoFocus
-        />
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setRenameTarget(null)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void handleRename()}
-            disabled={busy || !renameValue.trim()}
-          >
-            {busy ? "Saving..." : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-
-  const deleteDialog = (
-    <Dialog
-      open={!!deleteTarget}
-      onOpenChange={(open) => {
-        if (!open) setDeleteTarget(null);
-      }}
-    >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Delete session?</DialogTitle>
-          <DialogDescription>
-            This permanently removes &ldquo;{deleteTarget?.query}&rdquo; and all associated data.
-          </DialogDescription>
-        </DialogHeader>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
-            Cancel
-          </Button>
-          <Button type="button" variant="destructive" onClick={() => void handleDelete()} disabled={busy}>
-            {busy ? "Deleting..." : "Delete"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-
   return (
     <>
-      <div className="max-h-[520px] overflow-y-auto pr-1">
+      <div className={limit ? undefined : "max-h-[520px] overflow-y-auto pr-1"}>
         <div ref={gridRef} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recent.map((session) => (
+          {sessions.map((session) => (
             <Card
               key={session.id}
               data-session-card
@@ -387,21 +249,44 @@ export function SessionLibrary() {
         ) : null}
       </div>
 
-      {renameDialog}
-      {deleteDialog}
+      <SessionLibraryDialogs
+        renameTarget={renameTarget}
+        renameValue={renameValue}
+        deleteTarget={deleteTarget}
+        busy={busy}
+        error={error}
+        onRenameValueChange={setRenameValue}
+        onRenameClose={() => setRenameTarget(null)}
+        onRename={() => void handleRename()}
+        onDeleteClose={() => setDeleteTarget(null)}
+        onDelete={() => void handleDelete()}
+      />
     </>
   );
 }
 
 export function SessionLibrarySection() {
+  const { recent } = useChromeRecent();
+  const showAll = recent.length > HOME_LIBRARY_LIMIT;
+
   return (
     <section className="mt-4">
       <Separator className="mb-8 bg-border/50" />
-      <div className="mb-6">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">Your library</p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight">Previous sessions</h2>
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Your library</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight">Previous sessions</h2>
+        </div>
+        {showAll ? (
+          <Link
+            href="/library"
+            className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5"
+          >
+            Show all
+          </Link>
+        ) : null}
       </div>
-      <SessionLibrary />
+      <SessionLibrary limit={HOME_LIBRARY_LIMIT} />
     </section>
   );
 }

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutGrid,
+  Library,
   PanelLeft,
   Search,
   Settings,
@@ -67,6 +68,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Portfolio",
     icon: LayoutGrid,
     isActive: (pathname) => pathname.startsWith("/portfolio"),
+  },
+  {
+    href: "/library",
+    label: "Library",
+    icon: Library,
+    isActive: (pathname) => pathname.startsWith("/library"),
   },
   {
     href: "/profile",

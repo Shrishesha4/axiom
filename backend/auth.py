@@ -108,5 +108,6 @@ def user_to_dict(user: User) -> dict:
         "token_limit": user.token_limit,
         "tokens_used": user.tokens_used,
         "tokens_remaining": max(0, user.token_limit - user.tokens_used),
+        "is_active": user.is_active,
         "created_at": serialize_utc(user.created_at),
     }
