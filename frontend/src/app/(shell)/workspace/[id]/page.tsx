@@ -25,7 +25,7 @@ import { BriefingModal } from "@/components/BriefingModal";
 import { DebateModal } from "@/components/DebateModal";
 import { DocumentModal } from "@/components/DocumentModal";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { InvestigationLoadingView } from "@/components/workspace/InvestigationLoadingView";
 
 type TraceStep = {
   id?: number;
@@ -319,14 +319,7 @@ export default function WorkspacePage() {
   const mainPanel = useMemo(
     () => (
       <div className="p-6">
-        {isRunning && !summary && (
-          <div className="flex h-64 items-center justify-center">
-            <div className="text-center">
-              <Spinner className="mx-auto mb-4 h-8 w-8 text-primary" />
-              <p className="text-sm text-muted-foreground">Generating intelligence...</p>
-            </div>
-          </div>
-        )}
+        {isRunning && !summary && <InvestigationLoadingView investigationId={id} />}
 
         {summary && (
           <InvestigationDashboard

@@ -99,8 +99,15 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
 
       measureSpan.style.font = `${styles.fontStyle} ${styles.fontWeight} ${fontSize} ${styles.fontFamily}`;
       measureSpan.style.letterSpacing = styles.letterSpacing;
+      measureSpan.style.lineHeight = styles.lineHeight;
       measureSpan.style.fontFeatureSettings = styles.fontFeatureSettings;
       measureSpan.style.fontVariationSettings = styles.fontVariationSettings;
+    };
+
+    const scheduleCaretUpdate = (target: HTMLInputElement) => {
+      requestAnimationFrame(() => {
+        updateCaretRef.current(target);
+      });
     };
 
     const measurePrefixWidth = (text: string) => {
@@ -206,29 +213,34 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
 
       const handleSelectionChange = () => {
         if (document.activeElement !== input) return;
+        scheduleCaretUpdate(input);
+      };
 
-        requestAnimationFrame(() => {
-          if (document.activeElement === input) {
-            updateCaretRef.current(input);
-          }
-        });
+      const handleAutofill = () => {
+        scheduleCaretUpdate(input);
       };
 
       document.addEventListener("selectionchange", handleSelectionChange);
       document.fonts.addEventListener("loadingdone", updateCaretIfFocused);
       void document.fonts.ready.then(updateCaretIfFocused);
       input.addEventListener("scroll", updateCaretIfFocused);
+      input.addEventListener("animationstart", handleAutofill);
 
       const resizeObserver = new ResizeObserver(updateCaretIfFocused);
       resizeObserver.observe(container);
 
       updateCaretIfFocused();
+      const syncTimers = [0, 100, 300].map((delay) =>
+        window.setTimeout(updateCaretIfFocused, delay),
+      );
 
       return () => {
         document.removeEventListener("selectionchange", handleSelectionChange);
         document.fonts.removeEventListener("loadingdone", updateCaretIfFocused);
         input.removeEventListener("scroll", updateCaretIfFocused);
+        input.removeEventListener("animationstart", handleAutofill);
         resizeObserver.disconnect();
+        syncTimers.forEach((timer) => window.clearTimeout(timer));
       };
     }, [showSmoothCaret]);
 
@@ -244,24 +256,41 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
       }
       onChange?.(event);
       if (showSmoothCaret) {
-        requestAnimationFrame(() => {
-          updateCaretRef.current(event.target);
-        });
+        scheduleCaretUpdate(event.target);
       }
     };
 
     const handleFocus = (event: FocusEvent<HTMLInputElement>) => {
       onFocus?.(event);
       if (showSmoothCaret) {
-        requestAnimationFrame(() => {
-          updateCaretRef.current(event.target);
-        });
+        scheduleCaretUpdate(event.target);
       }
     };
 
     const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
       caretOpacityRef.current.set(0);
       onBlur?.(event);
+    };
+
+    const handlePointerUp = (event: React.PointerEvent<HTMLInputElement>) => {
+      props.onPointerUp?.(event);
+      if (showSmoothCaret) {
+        scheduleCaretUpdate(event.currentTarget);
+      }
+    };
+
+    const handleKeyUp = (event: React.KeyboardEvent<HTMLInputElement>) => {
+      props.onKeyUp?.(event);
+      if (showSmoothCaret) {
+        scheduleCaretUpdate(event.currentTarget);
+      }
+    };
+
+    const handleSelect = (event: React.SyntheticEvent<HTMLInputElement>) => {
+      props.onSelect?.(event);
+      if (showSmoothCaret) {
+        scheduleCaretUpdate(event.currentTarget);
+      }
     };
 
     if (!showSmoothCaret) {
@@ -278,6 +307,9 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onPointerUp={handlePointerUp}
+          onKeyUp={handleKeyUp}
+          onSelect={handleSelect}
         />
       );
     }
@@ -299,6 +331,9 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onPointerUp={handlePointerUp}
+          onKeyUp={handleKeyUp}
+          onSelect={handleSelect}
         />
         <span
           ref={measureRef}
@@ -307,7 +342,7 @@ export const SmoothCaretInput = forwardRef<HTMLInputElement, SmoothCaretInputPro
         />
         <motion.div
           aria-hidden
-          className="pointer-events-none col-start-1 col-end-2 row-start-1 row-end-2 h-[0.9em] w-0.5 self-center bg-primary"
+          className="pointer-events-none z-10 col-start-1 col-end-2 row-start-1 row-end-2 h-[1em] w-0.5 justify-self-start self-center rounded-full bg-primary"
           style={{ x: springCaretX, opacity: caretOpacity }}
         />
       </div>

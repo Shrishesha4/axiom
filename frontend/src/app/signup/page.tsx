@@ -35,9 +35,9 @@ export default function SignupPage() {
     <div className="flex h-dvh items-center justify-center overflow-y-auto bg-muted/30 p-6">
       <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="text-center">
-          <p className="text-xs font-semibold tracking-[0.2em] text-primary mb-2">axiom.</p>
+          <p className="text-4xl font-semibold tracking-[0.1em] text-primary mb-2">axiom</p>
           <CardTitle className="text-2xl">Create your account</CardTitle>
-          <CardDescription>Start investigating live  data</CardDescription>
+          <CardDescription>Start investigating live data</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

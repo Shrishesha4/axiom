@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -109,6 +110,68 @@ def classify_investigation_intent(query: str) -> str:
     if any(token in lowered for token in ("debate", "investment", "portfolio", "prioritize")):
         return "investment"
     return "landscape"
+
+
+def followup_needs_live_data(question: str) -> bool:
+    """Return True only when a follow-up explicitly needs fresh live API calls."""
+    lowered = question.lower().strip()
+
+    refresh_tokens = (
+        "latest",
+        "current data",
+        "live data",
+        "fresh data",
+        "update",
+        "updated",
+        "refresh",
+        "re-run",
+        "rerun",
+        "search again",
+        "look again",
+        "pull new",
+        "fetch new",
+        "run again",
+    )
+    if any(token in lowered for token in refresh_tokens):
+        return True
+
+    tool_specific = (
+        "safety profile",
+        "adverse event",
+        "adverse events",
+        "openfda",
+        "faers",
+        "side effect",
+        "pubmed",
+        "publication",
+        "publications",
+        "literature search",
+        "search trial",
+        "search trials",
+        "find trial",
+        "find trials",
+        "nct ",
+        "nct-",
+        "how many trial",
+        "trial count",
+        "clinicaltrials.gov",
+    )
+    return any(token in lowered for token in tool_specific)
+
+
+def build_followup_context(summary_json: dict[str, Any]) -> str:
+    """Trim investigation context to fields useful for follow-up answers."""
+    keys = (
+        "condition",
+        "query",
+        "landscape",
+        "rankings",
+        "matrix",
+        "signals",
+        "opportunities",
+    )
+    subset = {key: summary_json[key] for key in keys if key in summary_json}
+    return json.dumps(subset, indent=2, default=str)
 
 
 def _top_mechanism(mechanism_dist: dict[str, int]) -> tuple[str, int]:

@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useLayoutEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutGrid,
@@ -12,6 +12,7 @@ import {
   Settings,
   Shield,
   User,
+  ArrowLeft,
   type LucideIcon,
 } from "lucide-react";
 import { SidebarHistoryFlyout } from "@/components/home/SidebarHistoryFlyout";
@@ -156,6 +157,7 @@ function readSidebarExpanded(): boolean {
 
 export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const [animateLayout, setAnimateLayout] = useState(false);
@@ -167,8 +169,10 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
   }, [pathname]);
 
   useLayoutEffect(() => {
-    setExpanded(readSidebarExpanded());
-    setAnimateLayout(true);
+    setTimeout(() => {
+      setExpanded(readSidebarExpanded());
+      setAnimateLayout(true);
+    }, 100);
   }, []);
 
   const toggleSidebar = useCallback(() => {
@@ -185,6 +189,7 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
 
   const sidebarWidth = expanded ? SIDEBAR_OPEN : SIDEBAR_RAIL;
   const layoutTransition = animateLayout ? slideTransition : { duration: 0 };
+  const showBack = pathname !== "/";
 
   if (!user) return null;
 
@@ -263,7 +268,7 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
                     backgroundClassName="bg-white"
                   >
                     <div className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden">
-                      <div className="flex shrink-0 items-center gap-1.5 px-2 py-1.5">
+                      <div className="flex shrink-0 items-center gap-1 px-2 py-1.5">
                         <Button
                           type="button"
                           variant="ghost"
@@ -274,6 +279,18 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
                         >
                           <PanelLeft className="h-4 w-4" />
                         </Button>
+                        {showBack && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => router.push("/")}
+                            title="Back to home"
+                            className="h-7 w-7 shrink-0 rounded-lg p-0 opacity-70 transition-all hover:bg-black/[0.05] hover:opacity-100"
+                          >
+                            <ArrowLeft className="h-4 w-4" />
+                          </Button>
+                        )}
                         <div className="min-w-0 flex-1">{header}</div>
                       </div>
                       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>

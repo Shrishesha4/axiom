@@ -17,15 +17,35 @@ Top therapies:
 {rankings}
 """
 
-FOLLOWUP_PROMPT = """Answer the follow-up question using ONLY data from your tools or the provided investigation context.
-If the question asks about underserved areas, call get_competitive_matrix and rank_therapies_by_momentum to identify mechanisms with lower trial density but high differentiation scores.
-You may call tools to fetch fresh data before answering.
+FOLLOWUP_CONTEXT_PROMPT = """You are continuing a competitive intelligence conversation about {condition}.
+
+Answer the follow-up using:
+1. The investigation context below when the question is about this competitive analysis (rankings, mechanisms, trial landscape, signals, opportunities).
+2. Established medical and scientific knowledge when the question is general (causes, symptoms, pathophysiology, epidemiology, diagnosis, prognosis, risk factors).
+
+Do NOT call tools. Do NOT invent trial counts, momentum scores, or rankings beyond the investigation context.
+If the user needs refreshed live trial searches, safety profiles, or PubMed pulls, tell them to ask to "search latest trials" or "refresh the data".
 
 Question: {question}
 
-Investigation context (may be stale — prefer tool results):
+Investigation context:
 {data}
 """
+
+FOLLOWUP_LIVE_PROMPT = """The user wants fresh live data. Call only the tools required to answer — never run the full investigation pipeline.
+- search_trials: trial counts, NCT IDs, or new trial searches only
+- rank_therapies_by_momentum / get_competitive_matrix / get_whitespace_opportunities: ranking, positioning, or underserved-mechanism questions only
+- get_publications: literature for a specific named therapy only
+- get_safety_profile: safety or adverse-event questions for a named therapy only
+Skip any tool the question does not need.
+
+Question: {question}
+
+Investigation context (may be stale — prefer fresh tool results for competitive stats):
+{data}
+"""
+
+FOLLOWUP_PROMPT = FOLLOWUP_LIVE_PROMPT
 
 BULL_PROMPT = """You are the BULL analyst in an investment debate about the competitive landscape below.
 Argue FOR prioritizing this therapeutic area based ONLY on the data provided. Never invent numbers.

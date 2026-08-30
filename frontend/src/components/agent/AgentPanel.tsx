@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Check, Loader2, Send } from "lucide-react";
 import { AgentTrace } from "./AgentTrace";
 import { ChatMessageContent } from "./ChatMessageContent";
+import { StreamingText } from "./StreamingText";
 import { explainSignals, streamAskFollowup, getInvestigation } from "@/lib/api";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { FollowUp, Signal } from "@/lib/api";
@@ -58,18 +59,29 @@ function FollowUpToolTrace({ steps }: { steps: ToolStep[] }) {
   if (!steps.length) return null;
 
   return (
-    <div className="mb-2 w-full max-w-[95%] space-y-1 rounded-xl border border-border/40 bg-[#f5f6f6] px-3 py-2">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      className="mb-2 w-full max-w-[95%] space-y-1 rounded-xl border border-border/40 bg-[#f5f6f6] px-3 py-2"
+    >
       {steps.map((step) => (
-        <div key={step.step} className="flex items-start gap-2 text-[11px] text-muted-foreground">
+        <motion.div
+          key={step.step}
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.22 }}
+          className="flex items-start gap-2 text-[11px] text-muted-foreground"
+        >
           {step.status === "complete" ? (
             <Check className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
           ) : (
             <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin text-primary" />
           )}
           <span className="leading-snug">{step.message}</span>
-        </div>
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -92,15 +104,42 @@ export function AgentPanel({
   const [liveToolSteps, setLiveToolSteps] = useState<ToolStep[]>([]);
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const streamingContentRef = useRef("");
+  const streamingFlushRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setMessages(followupsToMessages(savedFollowups));
+    setTimeout(() => {
+      setMessages(followupsToMessages(savedFollowups));
+    }, 100);
   }, [savedFollowups]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, explanation, traceSteps, liveToolSteps]);
+
+  useEffect(() => {
+    return () => {
+      if (streamingFlushRef.current !== null) {
+        window.cancelAnimationFrame(streamingFlushRef.current);
+      }
+    };
+  }, []);
+
+  const flushStreamingContent = (assistantId: string) => {
+    const content = streamingContentRef.current;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === assistantId ? { ...m, content } : m)),
+    );
+  };
+
+  const scheduleStreamingFlush = (assistantId: string) => {
+    if (streamingFlushRef.current !== null) return;
+    streamingFlushRef.current = window.requestAnimationFrame(() => {
+      streamingFlushRef.current = null;
+      flushStreamingContent(assistantId);
+    });
+  };
 
   const handleExplain = async () => {
     setIsExplaining(true);
@@ -133,6 +172,7 @@ export function AgentPanel({
     setIsAsking(true);
     setLiveToolSteps([]);
     setStreamingAssistantId(assistantId);
+    streamingContentRef.current = "";
     setMessages((prev) => [
       ...prev,
       { id: userId, role: "user", content: q, status: "sending" },
@@ -152,11 +192,8 @@ export function AgentPanel({
       q,
       (event) => {
         if (event.type === "delta") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + event.content } : m,
-            ),
-          );
+          streamingContentRef.current += event.content;
+          scheduleStreamingFlush(assistantId);
         }
         if (event.type === "tool") {
           setLiveToolSteps((prev) => {
@@ -177,6 +214,11 @@ export function AgentPanel({
         }
       },
       async () => {
+        if (streamingFlushRef.current !== null) {
+          window.cancelAnimationFrame(streamingFlushRef.current);
+          streamingFlushRef.current = null;
+        }
+        flushStreamingContent(assistantId);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId ? { ...m, status: "complete" } : m,
@@ -249,10 +291,18 @@ export function AgentPanel({
           )}
 
           {explanation && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            >
               <Card size="sm" className="rounded-xl border-border/50 shadow-none">
                 <CardContent className="pt-4 text-sm text-muted-foreground">
-                  <ChatMessageContent content={explanation} />
+                  {isExplaining ? (
+                    <StreamingText content={explanation} isStreaming />
+                  ) : (
+                    <ChatMessageContent content={explanation} />
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -264,8 +314,11 @@ export function AgentPanel({
                 Follow-up
               </p>
               {messages.map((msg) => (
-                <div
+                <motion.div
                   key={msg.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                   className={cn(
                     "flex flex-col gap-1",
                     msg.role === "user" ? "items-end" : "items-start",
@@ -277,7 +330,8 @@ export function AgentPanel({
                     <FollowUpToolTrace steps={liveToolSteps} />
                   ) : null}
 
-                  <div
+                  <motion.div
+                    layout
                     className={cn(
                       "max-w-[95%] px-3.5 py-2.5 text-sm",
                       msg.role === "user"
@@ -288,13 +342,60 @@ export function AgentPanel({
                     {msg.role === "user" ? (
                       <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                     ) : msg.content ? (
-                      <ChatMessageContent content={msg.content} />
+                      <AnimatePresence mode="wait">
+                        {msg.status === "streaming" ? (
+                          <motion.div
+                            key="streaming"
+                            initial={{ opacity: 0.85 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <StreamingText
+                              content={msg.content}
+                              isStreaming
+                            />
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="complete"
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            <ChatMessageContent content={msg.content} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     ) : msg.status === "streaming" && liveToolSteps.length > 0 ? (
-                      <p className="text-muted-foreground">Analyzing live data…</p>
+                      <motion.p
+                        className="text-muted-foreground"
+                        animate={{ opacity: [0.45, 1, 0.45] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        Analyzing live data…
+                      </motion.p>
                     ) : msg.status === "streaming" ? (
-                      <p className="text-muted-foreground">...</p>
+                      <motion.div
+                        className="flex items-center gap-1.5 text-muted-foreground"
+                        aria-label="Thinking"
+                      >
+                        {[0, 1, 2].map((index) => (
+                          <motion.span
+                            key={index}
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-current"
+                            animate={{ opacity: [0.25, 1, 0.25], y: [0, -2, 0] }}
+                            transition={{
+                              duration: 1.1,
+                              repeat: Infinity,
+                              ease: "easeInOut",
+                              delay: index * 0.15,
+                            }}
+                          />
+                        ))}
+                      </motion.div>
                     ) : null}
-                  </div>
+                  </motion.div>
 
                   {msg.role === "user" && (
                     <span className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
@@ -319,10 +420,10 @@ export function AgentPanel({
                         ? "Running tools…"
                         : msg.content
                           ? "Writing answer…"
-                          : "Responding…"}
+                          : "Thinking…"}
                     </span>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
           )}

@@ -9,7 +9,8 @@ from agent.prompts import (
     BD_MEMO_PROMPT,
     BEAR_PROMPT,
     BULL_PROMPT,
-    FOLLOWUP_PROMPT,
+    FOLLOWUP_CONTEXT_PROMPT,
+    FOLLOWUP_LIVE_PROMPT,
     INVESTIGATION_PROMPT,
     SIGNAL_EXPLAIN_PROMPT,
     SYNTHESIS_PROMPT,
@@ -23,8 +24,10 @@ from serialization import serialize_utc
 from services.live_data import infer_condition
 from services.dashboard import (
     build_dashboard_config,
+    build_followup_context,
     build_market_signal_fallback,
     classify_investigation_intent,
+    followup_needs_live_data,
     resolve_investigation_condition,
 )
 from tools.analytics import (
@@ -175,7 +178,7 @@ async def _agent_tool_loop(
             "Searched the web",
             "complete",
         )
-        yield _trace_event("web_search", "complete", "Web search context enabled")
+        yield _trace_event("web_search", "complete", "Searched the web")
 
     synthesis: str | None = None
 
@@ -408,7 +411,7 @@ async def run_investigation(
             else:
                 yield event
 
-    yield _trace_event("synthesize", "running", "Generating intelligence")
+    yield _trace_event("synthesize", "running", "Thinking about the question")
     await asyncio.sleep(0.4)
 
     summary = _assemble_investigation_summary(
@@ -503,19 +506,68 @@ async def ask_followup(
         return
 
     client = get_openrouter_client()
-    context = json.dumps(inv.summary_json, indent=2)
-    messages: list[dict] = [
+    condition = inv.summary_json.get("condition") or inv.query
+    context = build_followup_context(inv.summary_json)
+    needs_live_data = followup_needs_live_data(question)
+
+    if not needs_live_data:
+        messages: list[dict] = [
+            {
+                "role": "system",
+                "content": (
+                    _system_prompt()
+                    + "\nYou are in follow-up mode. Answer from the investigation context "
+                    "and established medical knowledge. Do not call tools."
+                ),
+            },
+            {
+                "role": "user",
+                "content": FOLLOWUP_CONTEXT_PROMPT.format(
+                    condition=condition,
+                    question=question,
+                    data=context,
+                ),
+            },
+        ]
+
+        stream = await asyncio.to_thread(
+            lambda: client.chat.completions.create(
+                model=settings.openrouter_model,
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                **openrouter_request_extras(),
+            )
+        )
+
+        for chunk in stream:
+            if hasattr(chunk, "usage") and chunk.usage:
+                record_token_usage(db, user, int(chunk.usage.total_tokens or 0))
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield {"type": "delta", "content": delta}
+                await asyncio.sleep(0)
+        return
+
+    messages = [
         {
             "role": "system",
             "content": (
                 _system_prompt()
-                + "\nYou may call tools to answer follow-up questions with fresh live data. "
-                "Never invent statistics. After tools return, answer in plain prose."
+                + "\nCall only the tools required for this follow-up. "
+                "Never run the full investigation pipeline. "
+                "After tools return, answer in plain prose."
             ),
         },
         {
             "role": "user",
-            "content": FOLLOWUP_PROMPT.format(question=question, data=context),
+            "content": FOLLOWUP_LIVE_PROMPT.format(
+                condition=condition,
+                question=question,
+                data=context,
+            ),
         },
     ]
 
@@ -526,40 +578,66 @@ async def ask_followup(
 
     used_tools = False
     for _ in range(MAX_TOOL_ROUNDS):
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=settings.openrouter_model,
-            messages=messages,
-            tools=followup_tools,
-            tool_choice="auto",
-            **openrouter_request_extras(),
+        stream = await asyncio.to_thread(
+            lambda: client.chat.completions.create(
+                model=settings.openrouter_model,
+                messages=messages,
+                tools=followup_tools,
+                tool_choice="auto",
+                stream=True,
+                stream_options={"include_usage": True},
+                **openrouter_request_extras(),
+            )
         )
-        record_token_usage(db, user, _usage_tokens(response))
-        message = response.choices[0].message
 
-        if message.tool_calls:
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        content_parts: list[str] = []
+
+        for chunk in stream:
+            if hasattr(chunk, "usage") and chunk.usage:
+                record_token_usage(db, user, int(chunk.usage.total_tokens or 0))
+            if not chunk.choices:
+                continue
+
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content_parts.append(delta.content)
+                yield {"type": "delta", "content": delta.content}
+                await asyncio.sleep(0)
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_by_index:
+                        tool_calls_by_index[idx] = {
+                            "id": tc.id or "",
+                            "type": "function",
+                            "function": {"name": "", "arguments": ""},
+                        }
+                    entry = tool_calls_by_index[idx]
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            entry["function"]["name"] = tc.function.name
+                        if tc.function.arguments:
+                            entry["function"]["arguments"] += tc.function.arguments
+
+        tool_calls = [tool_calls_by_index[i] for i in sorted(tool_calls_by_index)]
+
+        if tool_calls:
             used_tools = True
             messages.append(
                 {
                     "role": "assistant",
-                    "content": message.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in message.tool_calls
-                    ],
+                    "content": "".join(content_parts) or None,
+                    "tool_calls": tool_calls,
                 }
             )
 
-            for tc in message.tool_calls:
-                tool_name = tc.function.name
-                arguments = parse_tool_arguments(tc.function.arguments)
+            for tc in tool_calls:
+                tool_name = tc["function"]["name"]
+                arguments = parse_tool_arguments(tc["function"]["arguments"])
                 label = TRACE_LABELS.get(tool_name, tool_name)
                 yield {
                     "type": "tool",
@@ -584,14 +662,12 @@ async def ask_followup(
                 messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tc.id,
+                        "tool_call_id": tc["id"],
                         "content": json.dumps(result, default=str),
                     }
                 )
             continue
 
-        if message.content:
-            yield {"type": "delta", "content": message.content.strip()}
         return
 
     if used_tools:
@@ -623,6 +699,7 @@ async def ask_followup(
         delta = chunk.choices[0].delta.content
         if delta:
             yield {"type": "delta", "content": delta}
+            await asyncio.sleep(0)
 
 
 def get_briefing(db: Session, inv: Investigation) -> str:

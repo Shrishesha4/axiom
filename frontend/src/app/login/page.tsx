@@ -28,9 +28,9 @@ export default function LoginPage() {
   };
 
   return (
-    <RetroDitherLayout backgroundClassName="bg-muted">
-      <div className="flex h-full items-center justify-center overflow-y-auto p-6 pointer-events-none">
-      <Card className="pointer-events-auto w-full max-w-md shadow-sm">
+    <RetroDitherLayout className="h-dvh" backgroundClassName="bg-muted">
+      <div className="pointer-events-auto flex h-full items-center justify-center overflow-y-auto p-6">
+        <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="text-center">
           <p className="text-4xl font-semibold tracking-[0.1em] text-primary mb-2">axiom</p>
           <CardTitle className="text-2xl">Welcome</CardTitle>
@@ -43,6 +43,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -71,7 +72,7 @@ export default function LoginPage() {
             </Link>
           </p>
         </CardContent>
-      </Card>
+        </Card>
       </div>
     </RetroDitherLayout>
   );

@@ -88,6 +88,27 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+@keyframes caret-autofill-start {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+input:-webkit-autofill {
+  animation: caret-autofill-start 0.01s;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: transparent;
+  transition: background-color 99999s ease-out 0s;
+}
+
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }

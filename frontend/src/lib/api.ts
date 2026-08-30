@@ -338,6 +338,11 @@ export async function streamAskFollowup(
         try {
           const event = JSON.parse(line.slice(6)) as FollowUpStreamEvent;
           onEvent(event);
+          if (event.type === "delta") {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 0);
+            });
+          }
           if (event.type === "done") {
             onComplete();
             return;
