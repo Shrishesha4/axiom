@@ -1,5 +1,6 @@
 const TOKEN_KEY = "axiom_token";
 const USER_KEY = "axiom_user";
+const AUTH_STORE_EVENT = "axiom-auth-change";
 
 export interface AuthUser {
   id: number;
@@ -20,8 +21,7 @@ export function getToken(): string | null {
 }
 
 export function getStoredUser(): AuthUser | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(USER_KEY);
+  const raw = getStoredUserSnapshot();
   if (!raw) return null;
   try {
     return JSON.parse(raw) as AuthUser;
@@ -30,14 +30,37 @@ export function getStoredUser(): AuthUser | null {
   }
 }
 
+export function getStoredUserSnapshot(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(USER_KEY);
+}
+
+export function subscribeAuthStorage(onStoreChange: () => void): () => void {
+  const handleChange = () => onStoreChange();
+  window.addEventListener(AUTH_STORE_EVENT, handleChange);
+  window.addEventListener("storage", handleChange);
+  return () => {
+    window.removeEventListener(AUTH_STORE_EVENT, handleChange);
+    window.removeEventListener("storage", handleChange);
+  };
+}
+
+function notifyAuthStorageChange() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_STORE_EVENT));
+  }
+}
+
 export function setAuth(token: string, user: AuthUser) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  notifyAuthStorageChange();
 }
 
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  notifyAuthStorageChange();
 }
 
 let sessionExpiredHandler: (() => void) | null = null;

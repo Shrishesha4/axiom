@@ -13,10 +13,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   AuthUser,
   clearAuth,
-  getStoredUser,
   getToken,
+  getStoredUserSnapshot,
   setAuth,
   setSessionExpiredHandler,
+  subscribeAuthStorage,
 } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -34,17 +35,25 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_PATHS = ["/login", "/signup"];
 
-function subscribe() {
-  return () => {};
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Must start `null` on every render, matching the server (which has no
   // localStorage) — seeding this from getStoredUser() in a lazy initializer
   // would make the client's first hydration pass diverge from the
   // server-rendered HTML wherever `user` gates output (e.g. AppHeader),
   // triggering a hydration mismatch (React error #418).
-  const storedUser = useSyncExternalStore(subscribe, getStoredUser, () => null);
+  const storedUserRaw = useSyncExternalStore(
+    subscribeAuthStorage,
+    getStoredUserSnapshot,
+    () => null,
+  );
+  const storedUser = useMemo(() => {
+    if (!storedUserRaw) return null;
+    try {
+      return JSON.parse(storedUserRaw) as AuthUser;
+    } catch {
+      return null;
+    }
+  }, [storedUserRaw]);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -62,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
     const data = (await res.json()) as AuthUser;
-    localStorage.setItem("axiom_user", JSON.stringify(data));
+    setAuth(token, data);
     return data;
   }, []);
 
