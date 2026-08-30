@@ -2,9 +2,9 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { toCanvas } from "html-to-image";
@@ -73,9 +73,9 @@ const DEFAULTS: Required<RetroDitherOptions> = {
   softness: 1,
   pixelSize: 2,
   levels: 4,
-  darkColor: [0, 0, 0],
-  lightColor: [1, 1, 1],
-  colorize: 0.1,
+  darkColor: [0.0, 0.47, 0.42],
+  lightColor: [0.96, 0.99, 0.98],
+  colorize: 1,
   contrast: 0.6,
   brightness: 0,
   strength: 0.75,
@@ -224,7 +224,7 @@ void main () {
   vec3 dithered = mix(keepHue, palette, clamp(uColorize, 0.0, 1.0));
   float scanAmp = mix(0.45, 0.15, crisp);
   dithered *= 1.0 - uScanlines * scanAmp * mod(cell.y, 2.0);
-  dithered *= 1.0 + rippleReveal * vec3(0.22, -0.06, 0.3);
+  dithered *= 1.0 + rippleReveal * vec3(0.04, 0.16, 0.12);
 
   float dist = length((uv - uPointer) * vec2(aspect, 1.0));
   float radius = max(uRadius * uActive, 1e-4);
@@ -244,11 +244,15 @@ void main () {
     * clamp(uStrength, 0.0, 1.0);
   mask = clamp(max(mask, rippleReveal), 0.0, 1.0);
 
+  if (mask < 0.001) {
+    outColor = vec4(0.0);
+    return;
+  }
+
   float apply = step(bayer(ivec2(cell)), mask);
 
   vec3 col = mix(content.rgb, dithered, apply);
-  float alpha = mix(content.a, pixel.a, apply);
-  outColor = vec4(col, alpha);
+  outColor = vec4(col, 1.0);
 }`;
 
 export function supportsHtmlInCanvas(): boolean {
@@ -274,17 +278,15 @@ export function createRetroDither(
     depth: false,
     stencil: false,
     antialias: false,
-    premultipliedAlpha: false,
+    premultipliedAlpha: true,
   });
   if (!gl || gl.isContextLost()) return null;
+  gl.clearColor(0, 0, 0, 0);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  const sourceCtx = source.getContext("2d") as ElementImageContext | null;
-  const paintable = source as PaintableCanvas;
-  const htmlInCanvas = Boolean(
-    sourceCtx &&
-    typeof sourceCtx.drawElementImage === "function" &&
-    typeof paintable.requestPaint === "function",
-  );
+  // React mounts content in a normal div; always use DOM capture (not html-in-canvas).
+  const htmlInCanvas = false;
 
   let contentDirty = false;
   let wake = () => {};
@@ -292,16 +294,64 @@ export function createRetroDither(
   let captureStamp = 0;
   let captureInflight = false;
 
-  if (htmlInCanvas) {
-    paintable.onpaint = () => {
-      try {
-        sourceCtx!.reset();
-        sourceCtx!.drawElementImage!(content, 0, 0);
-        contentDirty = true;
-        scheduleTextMask();
-        wake();
-      } catch {}
-    };
+  const captureCanvas = document.createElement("canvas");
+  const captureCtx = captureCanvas.getContext("2d");
+
+  function uploadCaptureCanvas() {
+    if (!captureCtx) return false;
+    gl!.bindTexture(gl!.TEXTURE_2D, contentTexture);
+    gl!.texImage2D(
+      gl!.TEXTURE_2D,
+      0,
+      gl!.RGBA,
+      gl!.RGBA,
+      gl!.UNSIGNED_BYTE,
+      captureCanvas,
+    );
+    scheduleTextMask();
+    wake();
+    return true;
+  }
+
+  function fillCaptureFromBackground() {
+    if (!captureCtx) return false;
+    const width = Math.max(1, content.clientWidth);
+    const height = Math.max(1, content.clientHeight);
+    if (width < 2 || height < 2) return false;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelWidth = Math.round(width * dpr);
+    const pixelHeight = Math.round(height * dpr);
+    if (
+      captureCanvas.width !== pixelWidth ||
+      captureCanvas.height !== pixelHeight
+    ) {
+      captureCanvas.width = pixelWidth;
+      captureCanvas.height = pixelHeight;
+    }
+
+    const target = (content.firstElementChild as HTMLElement | null) ?? content;
+    const pageBg = getComputedStyle(document.documentElement).backgroundColor;
+    captureCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    captureCtx.clearRect(0, 0, width, height);
+    if (pageBg && pageBg !== "transparent" && pageBg !== "rgba(0, 0, 0, 0)") {
+      captureCtx.fillStyle = pageBg;
+      captureCtx.fillRect(0, 0, width, height);
+    } else {
+      captureCtx.fillStyle = "#ffffff";
+      captureCtx.fillRect(0, 0, width, height);
+    }
+    captureCtx.fillStyle = getComputedStyle(target).backgroundColor;
+    captureCtx.fillRect(0, 0, width, height);
+    return uploadCaptureCanvas();
+  }
+
+  function hasRichContent() {
+    return Boolean(
+      content.querySelector(
+        "img, svg, video, canvas, p, h1, h2, h3, h4, h5, h6, button, input, textarea, label, a",
+      ),
+    );
   }
 
   async function captureViaDomSnapshot() {
@@ -310,14 +360,23 @@ export function createRetroDither(
     const height = Math.max(1, content.clientHeight);
     if (width < 2 || height < 2) return;
 
+    if (!hasRichContent() && fillCaptureFromBackground()) return;
+
     captureInflight = true;
     try {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const target = (content.firstElementChild as HTMLElement | null) ?? content;
+      const backgroundColor = getComputedStyle(target).backgroundColor;
       const snapshot = await toCanvas(content, {
         width,
         height,
         pixelRatio: dpr,
         cacheBust: true,
+        backgroundColor:
+          backgroundColor === "transparent" ||
+          backgroundColor === "rgba(0, 0, 0, 0)"
+            ? "#ffffff"
+            : backgroundColor,
       });
       gl!.bindTexture(gl!.TEXTURE_2D, contentTexture);
       gl!.texImage2D(
@@ -331,17 +390,13 @@ export function createRetroDither(
       scheduleTextMask();
       wake();
     } catch {
-      // Ignore transient DOM snapshot failures.
+      fillCaptureFromBackground();
     } finally {
       captureInflight = false;
     }
   }
 
   function scheduleContentCapture() {
-    if (htmlInCanvas) {
-      paintable.requestPaint!();
-      return;
-    }
     if (captureTimer) return;
     const wait = Math.max(0, 120 - (performance.now() - captureStamp));
     captureTimer = window.setTimeout(() => {
@@ -502,37 +557,9 @@ export function createRetroDither(
       1,
       Math.max(0.05, content.clientWidth / Math.max(output.clientWidth, 1)),
     );
-    if (htmlInCanvas) {
-      const cssWidth = Math.max(
-        1,
-        Math.round(
-          source.clientWidth ||
-            output.clientWidth ||
-            content.clientWidth,
-        ),
-      );
-      const cssHeight = Math.max(
-        1,
-        Math.round(
-          source.clientHeight ||
-            output.clientHeight ||
-            content.clientHeight,
-        ),
-      );
-      if (
-        source.width !== cssWidth * dpr ||
-        source.height !== cssHeight * dpr
-      ) {
-        source.width = cssWidth * dpr;
-        source.height = cssHeight * dpr;
-      }
-      paintable.requestPaint!();
-    } else {
-      scheduleContentCapture();
-    }
+    fillCaptureFromBackground();
+    scheduleContentCapture();
   }
-
-  syncCanvasSize();
 
   const pointer = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5, active: 0, target: 0 };
 
@@ -611,6 +638,7 @@ export function createRetroDither(
   function render() {
     uploadContent();
     uploadMask();
+    gl!.clear(gl!.COLOR_BUFFER_BIT);
     gl!.useProgram(program);
     gl!.activeTexture(gl!.TEXTURE0);
     gl!.bindTexture(gl!.TEXTURE_2D, contentTexture);
@@ -702,6 +730,8 @@ export function createRetroDither(
   }
 
   wake = start;
+  syncCanvasSize();
+  scheduleTextMask();
   start();
 
   function onMotionChange() {
@@ -725,13 +755,26 @@ export function createRetroDither(
   intersection.observe(output);
 
   const listenTarget = listenRoot ?? output.parentElement ?? output;
+  const coordRoot = output;
 
-  const rectCache = createRectCache(output);
+  const rectCache = createRectCache(coordRoot);
 
   function onPointerMove(event: PointerEvent) {
     const rect = rectCache.current;
-    pointer.tx = (event.clientX - rect.left) / Math.max(rect.width, 1);
-    pointer.ty = 1 - (event.clientY - rect.top) / Math.max(rect.height, 1);
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+    if (
+      localX < 0 ||
+      localY < 0 ||
+      localX > rect.width ||
+      localY > rect.height
+    ) {
+      pointer.target = 0;
+      start();
+      return;
+    }
+    pointer.tx = localX / Math.max(rect.width, 1);
+    pointer.ty = 1 - localY / Math.max(rect.height, 1);
     pointer.target = 1;
     scheduleContentCapture();
     start();
@@ -754,9 +797,17 @@ export function createRetroDither(
     start();
   }
 
-  listenTarget.addEventListener("pointermove", onPointerMove, { passive: true });
-  listenTarget.addEventListener("pointerleave", onPointerLeave, { passive: true });
-  listenTarget.addEventListener("pointerdown", onPointerDown, { passive: true });
+  window.addEventListener("pointermove", onPointerMove, { passive: true });
+  window.addEventListener("pointerdown", onPointerDown, { passive: true });
+  if (listenRoot) {
+    listenRoot.addEventListener("pointerleave", onPointerLeave, {
+      passive: true,
+    });
+  } else {
+    listenTarget.addEventListener("pointerleave", onPointerLeave, {
+      passive: true,
+    });
+  }
   content.addEventListener("scroll", scheduleTextMask, {
     capture: true,
     passive: true,
@@ -799,9 +850,13 @@ export function createRetroDither(
       observer.disconnect();
       intersection.disconnect();
       motionQuery.removeEventListener("change", onMotionChange);
-      listenTarget.removeEventListener("pointermove", onPointerMove);
-      listenTarget.removeEventListener("pointerleave", onPointerLeave);
-      listenTarget.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerdown", onPointerDown);
+      if (listenRoot) {
+        listenRoot.removeEventListener("pointerleave", onPointerLeave);
+      } else {
+        listenTarget.removeEventListener("pointerleave", onPointerLeave);
+      }
       content.removeEventListener("scroll", scheduleTextMask, {
         capture: true,
       });
@@ -811,7 +866,6 @@ export function createRetroDither(
       gl!.deleteShader(vertexShader);
       gl!.deleteShader(fragmentShader);
       gl!.deleteBuffer(quad);
-      if (htmlInCanvas) paintable.onpaint = null;
     },
   };
 }
@@ -823,14 +877,22 @@ export interface RetroDitherProps extends RetroDitherOptions {
   listenTargetRef?: React.RefObject<HTMLElement | null>;
 }
 
-const emptySubscribe = () => () => {};
-
-/** Hidden but sized so drawElementImage can capture the content div in React. */
+/** Hidden source canvas kept for API compatibility with the vanilla component. */
 const hiddenSourceStyle: React.CSSProperties = {
   position: "absolute",
   inset: 0,
   width: "100%",
   height: "100%",
+  visibility: "hidden",
+  pointerEvents: "none",
+};
+
+const hiddenContentStyle: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+  overflow: "hidden",
   visibility: "hidden",
   pointerEvents: "none",
 };
@@ -849,13 +911,7 @@ export function RetroDither({
   const [initialOptions] = useState(options);
   const [failed, setFailed] = useState(false);
 
-  const supported = useSyncExternalStore(
-    emptySubscribe,
-    supportsHtmlInCanvas,
-    () => false,
-  );
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     const source = sourceRef.current;
     const content = contentRef.current;
     const output = outputRef.current;
@@ -869,12 +925,12 @@ export function RetroDither({
       },
       initialOptions,
     );
-    if (supported && !instanceRef.current) setFailed(true);
+    if (!instanceRef.current) setFailed(true);
     return () => {
       instanceRef.current?.destroy();
       instanceRef.current = null;
     };
-  }, [initialOptions, supported]);
+  }, [initialOptions]);
 
   useEffect(() => {
     instanceRef.current?.setOptions(options);
@@ -906,15 +962,7 @@ export function RetroDither({
         suppressHydrationWarning
         style={hiddenSourceStyle}
       />
-      <div
-        ref={contentRef}
-        style={{
-          position: "relative",
-          width: "100%",
-          height: "100%",
-          overflow: "auto",
-        }}
-      >
+      <div ref={contentRef} style={hiddenContentStyle}>
         {children}
       </div>
       <canvas

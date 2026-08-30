@@ -7,24 +7,30 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { cn } from "@/lib/utils";
 
 interface WorkspaceResizableLayoutProps {
   sources: ReactNode;
   main: ReactNode;
   agent: ReactNode;
+  className?: string;
 }
+
+const panelShell =
+  "h-full min-h-0 overflow-hidden rounded-xl border border-border/40 bg-white shadow-sm";
 
 export function WorkspaceResizableLayout({
   sources,
   main,
   agent,
+  className,
 }: WorkspaceResizableLayoutProps) {
   return (
     <ResizablePanelGroup
       persistId="axiom-workspace-h"
       panelIds={["sources", "main", "agent"]}
       orientation="horizontal"
-      className="min-h-0 flex-1"
+      className={cn("h-full min-h-0 flex-1 gap-2 px-2 pb-2", className)}
     >
       <ResizablePanel
         id="sources"
@@ -33,20 +39,22 @@ export function WorkspaceResizableLayout({
         maxSize="24"
         collapsible
         collapsedSize="0"
-        className="no-print"
+        className="no-print min-w-0"
       >
-        <ScrollContainer className="h-full border-r border-border bg-card/30 p-4">
-          {sources}
-        </ScrollContainer>
+        <div className={cn(panelShell, "bg-[#f5f6f6]/90")}>
+          <ScrollContainer className="h-full p-4">{sources}</ScrollContainer>
+        </div>
       </ResizablePanel>
 
-      <ResizableHandle withHandle className="no-print" />
+      <ResizableHandle withHandle className="no-print w-1 bg-transparent" />
 
-      <ResizablePanel id="main" defaultSize="56" minSize="32">
-        <ScrollContainer className="h-full border-r border-border">{main}</ScrollContainer>
+      <ResizablePanel id="main" defaultSize="56" minSize="32" className="min-w-0">
+        <div className={panelShell}>
+          <ScrollContainer className="h-full">{main}</ScrollContainer>
+        </div>
       </ResizablePanel>
 
-      <ResizableHandle withHandle className="no-print" />
+      <ResizableHandle withHandle className="no-print w-1 bg-transparent" />
 
       <ResizablePanel
         id="agent"
@@ -55,11 +63,9 @@ export function WorkspaceResizableLayout({
         maxSize="48"
         collapsible
         collapsedSize="0"
-        className="no-print"
+        className="no-print min-w-0"
       >
-        <div className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-card/50">
-          {agent}
-        </div>
+        <div className={cn(panelShell, "flex flex-col bg-[#f5f6f6]/90")}>{agent}</div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );

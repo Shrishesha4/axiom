@@ -10,7 +10,6 @@ import type { FollowUp, Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 interface AgentPanelProps {
@@ -195,7 +194,7 @@ export function AgentPanel({
                 Signals ({signals.length})
               </p>
               {signals.map((s) => (
-                <Card key={s.id} size="sm">
+                <Card key={s.id} size="sm" className="rounded-xl border-border/50 shadow-none">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">{s.title}</CardTitle>
                     <CardDescription className="text-xs">{s.description}</CardDescription>
@@ -205,7 +204,7 @@ export function AgentPanel({
               <Button
                 onClick={handleExplain}
                 disabled={isExplaining}
-                className="w-full"
+                className="w-full rounded-xl"
                 variant="outline"
               >
                 {isExplaining ? "Loading..." : "Explain"}
@@ -215,7 +214,7 @@ export function AgentPanel({
 
           {explanation && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <Card size="sm">
+              <Card size="sm" className="rounded-xl border-border/50 shadow-none">
                 <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed pt-4">
                   {explanation}
                 </CardContent>
@@ -238,10 +237,10 @@ export function AgentPanel({
                 >
                   <div
                     className={cn(
-                      "max-w-[95%] rounded-lg px-3 py-2 text-sm leading-relaxed",
+                      "max-w-[95%] whitespace-pre-wrap px-3.5 py-2.5 text-sm leading-relaxed",
                       msg.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground border border-border"
+                        ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground shadow-sm"
+                        : "rounded-2xl rounded-bl-md border border-border/50 bg-white text-foreground shadow-sm",
                     )}
                   >
                     {msg.content || (msg.status === "streaming" ? "..." : "")}
@@ -276,13 +275,14 @@ export function AgentPanel({
       </div>
 
       {!isRunning && (
-        <div className="shrink-0 border-t border-border bg-card/80 pt-3 mt-2">
-          <div className="flex gap-2 mb-2">
+        <div className="mt-2 shrink-0 rounded-b-xl border-t border-border/40 bg-white/80 px-4 pb-4 pt-3">
+          <div className="mb-2 flex gap-2">
             <Button
               variant="ghost"
               size="xs"
               onClick={() => handleAsk("Which areas look underserved?")}
               disabled={isAsking}
+              className="rounded-full"
             >
               Underserved areas
             </Button>
@@ -294,7 +294,7 @@ export function AgentPanel({
               onChange={(e) => setFollowup(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !isAsking && handleAsk()}
               placeholder="Ask a follow-up question..."
-              className="flex-1"
+              className="flex-1 rounded-full border-border/50 bg-[#f5f6f6] shadow-none"
               disabled={isAsking}
             />
             <Button
@@ -302,6 +302,7 @@ export function AgentPanel({
               disabled={isAsking || !followup.trim()}
               size="icon"
               variant="default"
+              className="shrink-0 rounded-full"
             >
               {isAsking ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

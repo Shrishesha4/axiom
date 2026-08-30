@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from services.live_data import infer_condition
+from services.live_data import infer_condition, normalize_condition
 from tools.analytics import (
     generate_executive_briefing,
     generate_signals,
@@ -211,7 +211,7 @@ def execute_tool(
     tool_name: str,
     arguments: dict,
 ) -> Any:
-    condition = arguments.get("condition") or infer_condition(query)
+    condition = normalize_condition(arguments.get("condition") or infer_condition(query))
 
     if tool_name == "search_trials":
         return search_trials(

@@ -23,7 +23,10 @@ export function PhaseChart({ data }: PhaseChartProps) {
   }));
 
   return (
-    <div className="h-52 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
+    <div
+      className="h-52 w-full outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none"
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={chartData}

@@ -56,6 +56,38 @@ def infer_condition(query: str) -> str:
     return cleaned[:120] if cleaned else query[:120]
 
 
+_THERAPY_CLASS_SUFFIX = re.compile(
+    r"\b(biologics?|biosimilars?|small\s+molecules?|therap(?:y|ies|eutic(?:s| agents)?)|"
+    r"treatments?|drugs?|agents?|medications?|landscape|competitive\s+landscape|"
+    r"fda-approved|pipeline)\b",
+    re.IGNORECASE,
+)
+
+
+def normalize_condition(condition: str) -> str:
+    """Map free-text condition strings to ClinicalTrials.gov-friendly disease terms."""
+    text = (condition or "").strip()
+    if not text:
+        return text
+
+    lowered = text.lower()
+    for pattern, canonical in CONDITION_PATTERNS:
+        if re.search(pattern, lowered):
+            return canonical
+
+    stripped = _THERAPY_CLASS_SUFFIX.sub("", text)
+    stripped = re.sub(r"\s+", " ", stripped).strip(" ,.-")
+    if stripped:
+        stripped_lower = stripped.lower()
+        for pattern, canonical in CONDITION_PATTERNS:
+            if re.search(pattern, stripped_lower):
+                return canonical
+        if len(stripped) <= 120:
+            return stripped
+
+    return infer_condition(text)
+
+
 def parse_study(study: dict) -> dict | None:
     try:
         proto = study.get("protocolSection", {})

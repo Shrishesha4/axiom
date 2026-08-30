@@ -7,10 +7,10 @@ from services.investigation_cache import (
 )
 from services.live_data import fetch_pubmed, fetch_safety_profile, infer_condition
 from services.therapy import (
-    EMERGING_MECHANISMS,
     MECHANISM_DIFFERENTIATION,
     PHASE_WEIGHTS,
     aggregate_therapies,
+    emerging_mechanisms_for_condition,
 )
 
 
@@ -49,7 +49,8 @@ def get_therapy_landscape(
             companies.add(trial["sponsor"])
 
     phase_iii = phase_dist.get("PHASE3", 0)
-    emerging = sum(1 for therapy in therapies if therapy["mechanism"] in EMERGING_MECHANISMS)
+    emerging_set = emerging_mechanisms_for_condition(condition)
+    emerging = sum(1 for therapy in therapies if therapy["mechanism"] in emerging_set)
 
     return {
         "condition": condition,
@@ -153,10 +154,11 @@ def get_whitespace_opportunities(
     mechanism_dist = landscape["mechanism_distribution"]
 
     opportunities = []
+    emerging_set = emerging_mechanisms_for_condition(condition)
     for mechanism, count in mechanism_dist.items():
         density_pct = round(count / total * 100, 1)
         differentiation = MECHANISM_DIFFERENTIATION.get(mechanism, 50)
-        is_emerging = mechanism in EMERGING_MECHANISMS
+        is_emerging = mechanism in emerging_set
         score = differentiation - density_pct + (10 if is_emerging else 0)
         score = max(0.0, min(100.0, score))
 
@@ -186,10 +188,12 @@ def get_whitespace_opportunities(
 def generate_signals(
     investigation_id: int,
     condition: str,
+    query: str | None = None,
 ) -> list[dict]:
     landscape = get_therapy_landscape(investigation_id, condition)
     rankings = rank_therapies_by_momentum(investigation_id, condition, limit=5)
     matrix = get_competitive_matrix(investigation_id, condition)
+    emerging_set = emerging_mechanisms_for_condition(condition)
 
     signals: list[dict] = []
     total = landscape["total_trials"] or 1
@@ -197,27 +201,29 @@ def generate_signals(
 
     top_mechanism = max(mechanism_dist.items(), key=lambda item: item[1], default=("Other", 0))
     if top_mechanism[1] / total > 0.35:
+        pct = round(top_mechanism[1] / total * 100)
         signals.append(
             {
                 "id": 1,
-                "title": "Competitive concentration",
+                "title": f"{top_mechanism[0]} concentration in {condition}",
                 "description": (
-                    f"{top_mechanism[0]} mechanisms represent {top_mechanism[1]} of "
-                    f"{total} trials — high competitive density in this mechanism class."
+                    f"{top_mechanism[0]} accounts for {top_mechanism[1]} of {total} trials "
+                    f"({pct}%) — the dominant competitive axis in this scan."
                 ),
             }
         )
 
-    emerging = [item for item in matrix if item["mechanism"] in EMERGING_MECHANISMS]
+    emerging = [item for item in matrix if item["mechanism"] in emerging_set]
     if emerging:
         top_emerging = emerging[0]
         signals.append(
             {
                 "id": 2,
-                "title": "Emerging mechanism",
+                "title": f"Emerging {top_emerging['mechanism']} signal",
                 "description": (
-                    f"{top_emerging['name']} ({top_emerging['mechanism']}) shows differentiation "
-                    f"score {top_emerging['differentiation']} with lower competitive density."
+                    f"{top_emerging['name']} shows differentiation "
+                    f"{top_emerging['differentiation']}/100 with lower density than "
+                    f"{top_mechanism[0]} in {condition}."
                 ),
             }
         )
@@ -233,12 +239,25 @@ def generate_signals(
             signals.append(
                 {
                     "id": 3,
-                    "title": "Trial differentiation gap",
+                    "title": f"{lead['name']} outside the {top_mechanism[0]} cluster",
                     "description": (
-                        f"{lead['name']} ({lead['mechanism']}) shows momentum score "
-                        f"{lead['momentum_score']} outside the dominant mechanism class."
+                        f"{lead['mechanism']} asset with momentum {lead['momentum_score']} "
+                        f"and {lead['trial_count']} trials — potential differentiation path."
                     ),
                 }
+            )
+
+    if query and "underserved" in query.lower() and landscape["total_trials"] > 0:
+        opps = get_whitespace_opportunities(investigation_id, condition, limit=1)
+        if opps:
+            opp = opps[0]
+            signals.insert(
+                0,
+                {
+                    "id": 0,
+                    "title": f"Underserved: {opp['mechanism']}",
+                    "description": opp["rationale"],
+                },
             )
 
     return signals[:3]
@@ -252,7 +271,7 @@ def generate_executive_briefing(
     resolved_condition = condition or infer_condition(query)
     landscape = get_therapy_landscape(investigation_id, resolved_condition)
     rankings = rank_therapies_by_momentum(investigation_id, resolved_condition, limit=10)
-    signals = generate_signals(investigation_id, resolved_condition)
+    signals = generate_signals(investigation_id, resolved_condition, query=query)
 
     lines = [
         f"# Executive Briefing: {resolved_condition}",

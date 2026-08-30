@@ -43,8 +43,30 @@ MECHANISM_DIFFERENTIATION = {
     "GLP-1": 75,
     "NMDA antagonist": 20,
     "Cholinesterase inhibitor": 15,
+    "Immuno-oncology": 55,
+    "EGFR TKI": 40,
+    "TNF inhibitor": 25,
+    "Biologic immunomodulator": 60,
+    "HER2-targeted": 35,
+    "Cell therapy": 85,
+    "KRAS inhibitor": 78,
+    "JAK inhibitor": 45,
+    "B-cell / lymphocyte modulator": 65,
     "Other": 50,
 }
+
+
+def emerging_mechanisms_for_condition(condition: str) -> set[str]:
+    lowered = condition.lower()
+    if "alzheimer" in lowered or "parkinson" in lowered:
+        return {"Tau", "Neuroinflammation", "GLP-1"}
+    if "cancer" in lowered or "melanoma" in lowered or "lung" in lowered:
+        return {"Cell therapy", "KRAS inhibitor", "Immuno-oncology"}
+    if "arthritis" in lowered or "sclerosis" in lowered or "crohn" in lowered:
+        return {"JAK inhibitor", "Biologic immunomodulator", "Cell therapy"}
+    if "obesity" in lowered or "diabetes" in lowered:
+        return {"GLP-1", "Cell therapy"}
+    return {"Cell therapy", "KRAS inhibitor", "Neuroinflammation"}
 
 SKIP_THERAPY_NAMES = {"placebo", "unknown", "saline", "vehicle"}
 
@@ -68,6 +90,24 @@ def infer_mechanism(drug_name: str) -> str:
         return "GLP-1"
     if "inflamm" in lower or "microglia" in lower:
         return "Neuroinflammation"
+    if any(k in lower for k in ("pembrolizumab", "nivolumab", "atezolizumab", "durvalumab", "pd-1", "pd1", "pd-l1")):
+        return "Immuno-oncology"
+    if any(k in lower for k in ("osimertinib", "erlotinib", "gefitinib", "egfr")):
+        return "EGFR TKI"
+    if any(k in lower for k in ("adalimumab", "etanercept", "infliximab", "tnf")):
+        return "TNF inhibitor"
+    if any(k in lower for k in ("tocilizumab", "rituximab", "il-6", "il6")):
+        return "Biologic immunomodulator"
+    if any(k in lower for k in ("trastuzumab", "pertuzumab", "her2")):
+        return "HER2-targeted"
+    if any(k in lower for k in ("car-t", "cart", "cell therapy")):
+        return "Cell therapy"
+    if any(k in lower for k in ("kras", "sotorasib", "adagrasib")):
+        return "KRAS inhibitor"
+    if any(k in lower for k in ("jak", "tofacitinib", "baricitinib", "upadacitinib")):
+        return "JAK inhibitor"
+    if any(k in lower for k in ("cd19", "ocrelizumab", "natalizumab")):
+        return "B-cell / lymphocyte modulator"
     return "Other"
 
 

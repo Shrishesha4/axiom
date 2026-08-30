@@ -29,11 +29,20 @@ export interface Investigation {
   created_at: string;
 }
 
+export interface AgentTraceStep {
+  id?: number;
+  step: string;
+  status: string;
+  message: string;
+  timestamp?: string;
+}
+
 export interface InvestigationDetail extends Investigation {
   summary?: InvestigationSummary;
   followups?: FollowUp[];
   debate?: DebateResult;
   memos?: Record<string, MemoEntry>;
+  traces?: AgentTraceStep[];
 }
 
 export interface DebateResult {
@@ -58,6 +67,24 @@ export interface FollowUp {
 
 export interface InvestigationSummary {
   condition?: string;
+  query?: string;
+  intent?: string;
+  dashboard?: {
+    intent: string;
+    title: string;
+    subtitle: string;
+    kpis: { label: string; value: string | number }[];
+    sections: {
+      market_signal: boolean;
+      competitive_matrix: boolean;
+      phase_chart: boolean;
+      mechanism_chart: boolean;
+      whitespace: boolean;
+      trials_table: boolean;
+      momentum_rankings: boolean;
+    };
+    section_titles: Record<string, string>;
+  };
   landscape: {
     total_trials: number;
     total_companies: number;
@@ -165,6 +192,42 @@ export async function listInvestigations(): Promise<Investigation[]> {
   const res = await apiFetch("/api/investigations");
   if (!res.ok) throw new Error("Failed to fetch investigations");
   return res.json();
+}
+
+function parseApiErrorDetail(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback;
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (typeof item === "object" && item && "msg" in item ? String(item.msg) : ""))
+      .filter(Boolean)
+      .join(", ") || fallback;
+  }
+  return fallback;
+}
+
+export async function updateInvestigation(
+  id: number,
+  query: string
+): Promise<Investigation> {
+  const res = await apiFetch(`/api/investigations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(parseApiErrorDetail(err, "Failed to rename session"));
+  }
+  return res.json();
+}
+
+export async function deleteInvestigation(id: number): Promise<void> {
+  const res = await apiFetch(`/api/investigations/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(parseApiErrorDetail(err, "Failed to delete session"));
+  }
 }
 
 export async function createInvestigation(query: string): Promise<Investigation> {
@@ -445,4 +508,76 @@ export async function getSourceData(
   if (!res.ok) throw new Error("Failed to fetch source data");
   const data = await res.json();
   return { key: sourceKey, ...data };
+}
+
+export async function updateProfile(name: string): Promise<import("@/lib/auth").AuthUser> {
+  const res = await apiFetch("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update profile");
+  }
+  return res.json();
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const res = await apiFetch("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to change password");
+  }
+}
+
+export async function uploadAvatar(file: File): Promise<import("@/lib/auth").AuthUser> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_URL}/api/auth/avatar`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("axiom_token");
+      localStorage.removeItem("axiom_user");
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to upload avatar");
+  }
+  return res.json();
+}
+
+export async function removeAvatar(): Promise<import("@/lib/auth").AuthUser> {
+  const res = await apiFetch("/api/auth/avatar", { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to remove avatar");
+  }
+  return res.json();
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  const res = await apiFetch("/api/auth/me", {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete account");
+  }
 }

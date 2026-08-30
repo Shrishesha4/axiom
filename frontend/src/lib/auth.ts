@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: "user" | "admin";
+  avatar_url?: string | null;
   token_limit: number;
   tokens_used: number;
   tokens_remaining: number;
@@ -48,4 +49,13 @@ export function greeting(name: string): string {
   if (hour < 12) return `Good morning, ${name.split(" ")[0]}`;
   if (hour < 17) return `Good afternoon, ${name.split(" ")[0]}`;
   return `Good evening, ${name.split(" ")[0]}`;
+}
+
+export function userInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }

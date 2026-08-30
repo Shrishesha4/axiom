@@ -15,7 +15,6 @@ import {
   type DebateResult,
   type MemoEntry,
 } from "@/lib/api";
-import { AppHeader } from "@/components/AppHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { AgentPanel } from "@/components/agent/AgentPanel";
 import { WorkspaceResizableLayout } from "@/components/workspace/WorkspaceResizableLayout";
@@ -28,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 type TraceStep = {
+  id?: number;
   step: string;
   status: string;
   message: string;
@@ -37,7 +37,7 @@ type TraceStep = {
 export default function WorkspacePage() {
   const params = useParams();
   const id = Number(params.id);
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   const [query, setQuery] = useState("");
   const [summary, setSummary] = useState<InvestigationSummary | null>(null);
@@ -113,10 +113,22 @@ export default function WorkspacePage() {
       setFollowups(inv.followups || []);
       setSavedDebate(inv.debate);
       setSavedMemos(inv.memos || {});
-      if (inv.summary) {
-        setSummary(inv.summary);
+
+      if (inv.traces?.length) {
+        setTraceSteps(inv.traces);
+      }
+
+      const savedTrials = inv.summary?.landscape?.total_trials ?? 0;
+      const hasUsableSummary = Boolean(inv.summary) && savedTrials > 0;
+
+      if (hasUsableSummary) {
+        setSummary(inv.summary!);
         setIsRunning(false);
         return;
+      }
+
+      if (inv.summary && savedTrials === 0) {
+        setSummary(null);
       }
 
       cleanup = streamInvestigation(
@@ -215,9 +227,9 @@ export default function WorkspacePage() {
     () => (
       <div className="p-6">
         {isRunning && !summary && (
-          <div className="flex items-center justify-center h-64">
+          <div className="flex h-64 items-center justify-center">
             <div className="text-center">
-              <Spinner className="w-8 h-8 text-primary mx-auto mb-4" />
+              <Spinner className="mx-auto mb-4 h-8 w-8 text-primary" />
               <p className="text-sm text-muted-foreground">Generating intelligence...</p>
             </div>
           </div>
@@ -234,7 +246,7 @@ export default function WorkspacePage() {
         )}
 
         {!summary && !isRunning && (
-          <p className="text-sm text-muted-foreground text-center py-12">No data available.</p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No data available.</p>
         )}
       </div>
     ),
@@ -244,16 +256,16 @@ export default function WorkspacePage() {
   const agentPanel = useMemo(
     () => (
       <>
-        <div className="flex items-center justify-between p-4 pb-3 shrink-0">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest">Agent</p>
+        <div className="flex shrink-0 items-center justify-between rounded-t-xl px-4 pb-3 pt-3">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Agent</p>
           {!isRunning && (
             <div className="flex items-center gap-2">
               <Button variant="outline" size="xs" onClick={handleBriefing}>
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="h-3.5 w-3.5" />
                 Briefing
               </Button>
               <Button variant="outline" size="xs" onClick={handleDebate}>
-                <Swords className="w-3.5 h-3.5" />
+                <Swords className="h-3.5 w-3.5" />
                 Debate
               </Button>
             </div>
@@ -274,11 +286,22 @@ export default function WorkspacePage() {
     [id, summary, traceSteps, isRunning, followups, handleBriefing, handleDebate]
   );
 
-  return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-muted/20">
-      <AppHeader subtitle={query} className="shrink-0" />
+  if (!user) return null;
 
-      <WorkspaceResizableLayout sources={sourcesPanel} main={mainPanel} agent={agentPanel} />
+  return (
+    <>
+      <div className="flex h-full min-h-0 flex-col">
+        {query ? (
+          <p className="shrink-0 truncate px-4 pb-2 pl-10 text-sm text-muted-foreground">
+            {query}
+          </p>
+        ) : null}
+        <WorkspaceResizableLayout
+          sources={sourcesPanel}
+          main={mainPanel}
+          agent={agentPanel}
+        />
+      </div>
 
       <BriefingModal
         open={showBriefing}
@@ -302,6 +325,6 @@ export default function WorkspacePage() {
         loading={isMemoStreaming}
         onClose={() => setShowMemo(false)}
       />
-    </div>
+    </>
   );
 }

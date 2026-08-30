@@ -139,4 +139,15 @@ body {
   body {
     @apply bg-background text-foreground h-dvh overflow-hidden;
   }
+  .recharts-wrapper,
+  .recharts-wrapper:focus,
+  .recharts-wrapper:focus-visible,
+  .recharts-surface,
+  .recharts-surface:focus,
+  .recharts-surface:focus-visible,
+  .recharts-responsive-container,
+  .recharts-responsive-container:focus,
+  .recharts-responsive-container:focus-visible {
+    outline: none !important;
+  }
 }

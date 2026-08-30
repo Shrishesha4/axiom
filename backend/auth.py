@@ -104,6 +104,7 @@ def user_to_dict(user: User) -> dict:
         "email": user.email,
         "name": user.name,
         "role": user.role,
+        "avatar_url": user.avatar_url,
         "token_limit": user.token_limit,
         "tokens_used": user.tokens_used,
         "tokens_remaining": max(0, user.token_limit - user.tokens_used),

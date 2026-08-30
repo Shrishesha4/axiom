@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from serialization import serialize_utc
@@ -18,7 +18,7 @@ from agent.orchestrator import (
 )
 from auth import check_token_budget, get_current_user, get_current_user_sse
 from database import SessionLocal, get_db
-from models.models import Investigation, User
+from models.models import AgentTrace, Investigation, User
 from services.live_data import infer_condition
 from tools.analytics import (
     get_publications,
@@ -42,6 +42,10 @@ class MemoRequest(BaseModel):
     therapy_name: str
 
 
+class UpdateInvestigationRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+
+
 @router.get("")
 def list_investigations(
     user: Annotated[User, Depends(get_current_user)],
@@ -51,7 +55,7 @@ def list_investigations(
         db.query(Investigation)
         .filter(Investigation.user_id == user.id)
         .order_by(Investigation.created_at.desc())
-        .limit(20)
+        .limit(100)
         .all()
     )
     return [
@@ -152,6 +156,12 @@ def get_investigation(
     db: Session = Depends(get_db),
 ):
     inv = _get_user_investigation(investigation_id, user, db)
+    traces = (
+        db.query(AgentTrace)
+        .filter(AgentTrace.investigation_id == inv.id)
+        .order_by(AgentTrace.id)
+        .all()
+    )
     return {
         "id": inv.id,
         "query": inv.query,
@@ -161,7 +171,60 @@ def get_investigation(
         "followups": inv.followups_json or [],
         "debate": inv.debate_json,
         "memos": inv.memos_json or {},
+        "traces": [
+            {
+                "id": t.id,
+                "step": t.step,
+                "status": t.status,
+                "message": t.message,
+                "timestamp": t.timestamp.strftime("%H:%M:%S"),
+            }
+            for t in traces
+        ],
     }
+
+
+@router.patch("/{investigation_id}")
+def update_investigation(
+    investigation_id: int,
+    body: UpdateInvestigationRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    inv = _get_user_investigation(investigation_id, user, db)
+    new_query = body.query.strip()
+    inv.query = new_query
+    if inv.summary_json:
+        summary = dict(inv.summary_json)
+        summary["query"] = new_query
+        if summary.get("dashboard") and isinstance(summary["dashboard"], dict):
+            dashboard = dict(summary["dashboard"])
+            dashboard["subtitle"] = new_query[:140] + ("…" if len(new_query) > 140 else "")
+            summary["dashboard"] = dashboard
+        inv.summary_json = summary
+    db.commit()
+    db.refresh(inv)
+    return {
+        "id": inv.id,
+        "query": inv.query,
+        "status": inv.status,
+        "created_at": serialize_utc(inv.created_at),
+    }
+
+
+@router.delete("/{investigation_id}")
+def delete_investigation(
+    investigation_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    inv = _get_user_investigation(investigation_id, user, db)
+    db.query(AgentTrace).filter(AgentTrace.investigation_id == inv.id).delete(
+        synchronize_session=False
+    )
+    db.delete(inv)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/{investigation_id}/stream")

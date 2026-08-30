@@ -20,6 +20,12 @@ from agent.openrouter_client import get_openrouter_client, openrouter_request_ex
 from config import get_settings
 from models.models import AgentTrace, Investigation, User
 from services.live_data import infer_condition
+from services.dashboard import (
+    build_dashboard_config,
+    build_market_signal_fallback,
+    classify_investigation_intent,
+    resolve_investigation_condition,
+)
 from tools.analytics import (
     generate_executive_briefing,
     generate_signals,
@@ -37,6 +43,53 @@ from tools.registry import (
 settings = get_settings()
 
 MAX_TOOL_ROUNDS = 12
+
+
+def _landscape_trial_count(landscape: Any) -> int:
+    if isinstance(landscape, dict):
+        return int(landscape.get("total_trials") or 0)
+    return 0
+
+
+def _list_result_count(result: Any) -> int:
+    return len(result) if isinstance(result, list) else 0
+
+
+def _merge_tool_results(tool_name: str, existing: Any, new: Any) -> Any:
+    """Keep the richest tool output when the agent calls the same tool more than once."""
+    if tool_name == "get_therapy_landscape":
+        if _landscape_trial_count(new) > _landscape_trial_count(existing):
+            return new
+        return existing
+    if tool_name in {
+        "search_trials",
+        "rank_therapies_by_momentum",
+        "get_competitive_matrix",
+        "get_whitespace_opportunities",
+        "get_publications",
+    }:
+        if _list_result_count(new) > _list_result_count(existing):
+            return new
+        return existing
+    return new
+
+
+def _synthesis_contradicts_data(synthesis: str, landscape: dict[str, Any]) -> bool:
+    if _landscape_trial_count(landscape) == 0:
+        return False
+    lowered = synthesis.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "0 trials",
+            "zero trials",
+            "no trials",
+            "no relevant",
+            "no live",
+            "returned no",
+            "contained 0",
+        )
+    )
 
 
 def _system_prompt() -> str:
@@ -174,7 +227,12 @@ async def _agent_tool_loop(
                     tool_name,
                     arguments,
                 )
-                collected[tool_name] = result
+                if tool_name in collected:
+                    collected[tool_name] = _merge_tool_results(
+                        tool_name, collected[tool_name], result
+                    )
+                else:
+                    collected[tool_name] = result
 
                 complete_msg = describe_tool_result(tool_name, result)
                 _persist_trace(db, investigation.id, tool_name, complete_msg, "complete")
@@ -244,28 +302,64 @@ def _assemble_investigation_summary(
     collected: dict[str, Any],
     synthesis: str | None,
 ) -> dict:
-    condition = infer_condition(query)
+    condition = resolve_investigation_condition(query, collected)
+    intent = classify_investigation_intent(query)
     landscape = collected.get("get_therapy_landscape") or {}
     rankings = collected.get("rank_therapies_by_momentum") or []
     matrix = collected.get("get_competitive_matrix") or []
     trials = collected.get("search_trials") or []
 
+    from tools.analytics import (
+        get_competitive_matrix,
+        get_therapy_landscape,
+        rank_therapies_by_momentum,
+    )
+
+    if _landscape_trial_count(landscape) == 0:
+        landscape = get_therapy_landscape(investigation_id, condition)
+
     if not trials:
         trials = search_trials(investigation_id, condition=condition)
+    elif _list_result_count(trials) == 0:
+        trials = search_trials(investigation_id, condition=condition)
 
-    signals = generate_signals(investigation_id, condition=condition)
+    if not rankings:
+        rankings = rank_therapies_by_momentum(
+            investigation_id, condition=condition, limit=10
+        )
+    elif _list_result_count(rankings) == 0 and _landscape_trial_count(landscape) > 0:
+        rankings = rank_therapies_by_momentum(
+            investigation_id, condition=condition, limit=10
+        )
+
+    if not matrix:
+        matrix = get_competitive_matrix(investigation_id, condition)
+    elif _list_result_count(matrix) == 0 and _landscape_trial_count(landscape) > 0:
+        matrix = get_competitive_matrix(investigation_id, condition)
+
+    signals = generate_signals(investigation_id, condition=condition, query=query)
 
     opportunities = collected.get("get_whitespace_opportunities")
     if not opportunities:
         opportunities = get_whitespace_opportunities(investigation_id, condition=condition)
 
-    market_signal = synthesis or (
-        "Live trial data shows concentration in the dominant mechanism class, "
-        "with emerging approaches showing lower trial density."
+    fallback_signal = build_market_signal_fallback(
+        query, condition, landscape, rankings, opportunities, intent
+    )
+    if synthesis and not _synthesis_contradicts_data(synthesis, landscape):
+        market_signal = synthesis
+    else:
+        market_signal = fallback_signal
+
+    dashboard = build_dashboard_config(
+        query, condition, intent, landscape, rankings, opportunities, matrix
     )
 
     return {
         "condition": condition,
+        "query": query,
+        "intent": intent,
+        "dashboard": dashboard,
         "landscape": landscape,
         "rankings": rankings,
         "matrix": matrix,
@@ -280,8 +374,15 @@ async def run_investigation(
     db: Session, investigation: Investigation, user: User
 ) -> AsyncGenerator[dict, None]:
     if investigation.summary_json and investigation.status == "complete":
-        yield {"type": "complete", "data": investigation.summary_json}
-        return
+        saved_total = _landscape_trial_count(
+            (investigation.summary_json or {}).get("landscape") or {}
+        )
+        if saved_total > 0:
+            yield {"type": "complete", "data": investigation.summary_json}
+            return
+        investigation.status = "running"
+        investigation.summary_json = None
+        db.commit()
 
     collected: dict[str, Any] = {}
     synthesis: str | None = None

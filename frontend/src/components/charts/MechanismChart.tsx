@@ -19,7 +19,10 @@ export function MechanismChart({ data }: MechanismChartProps) {
   const chartData = Object.entries(data).map(([name, value]) => ({ name, value }));
 
   return (
-    <div className="w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
+    <div
+      className="w-full outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none"
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <div className="h-44 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>

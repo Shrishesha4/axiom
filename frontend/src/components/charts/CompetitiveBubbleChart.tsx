@@ -25,7 +25,10 @@ export function CompetitiveBubbleChart({ data, highlightMechanism }: Competitive
   }));
 
   return (
-    <div className="h-80 w-full [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none">
+    <div
+      className="h-80 w-full outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-surface]:outline-none"
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 16, right: 24, bottom: 32, left: 8 }}>
           <XAxis

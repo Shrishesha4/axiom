@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { memo } from "react";
 
 interface TraceStep {
+  id?: number;
   step: string;
   status: string;
   message: string;
@@ -20,9 +21,11 @@ interface AgentTraceProps {
 export const AgentTrace = memo(function AgentTrace({ steps, isRunning }: AgentTraceProps) {
   return (
     <div className="space-y-1">
-      <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">Agent</p>
-      {steps.map((step) => (
-        <div key={step.step} className="flex items-start gap-3 py-1.5">
+      {steps.map((step, index) => (
+        <div
+          key={step.id ?? `${step.step}-${index}`}
+          className="flex items-start gap-3 py-1.5"
+        >
           <div className="mt-0.5">
             {step.status === "complete" ? (
               <Check className="w-3.5 h-3.5 text-primary" />

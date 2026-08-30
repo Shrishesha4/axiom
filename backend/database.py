@@ -55,6 +55,12 @@ def _migrate():
                 "ADD COLUMN IF NOT EXISTS memos_json JSONB DEFAULT '{}'::jsonb"
             )
         )
+        conn.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT NULL"
+            )
+        )
 
 
 def _seed_admin():

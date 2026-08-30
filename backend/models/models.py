@@ -86,6 +86,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user")
     token_limit: Mapped[int] = mapped_column(Integer, default=100_000)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    avatar_url: Mapped[Optional[str]] = mapped_column(Text, default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

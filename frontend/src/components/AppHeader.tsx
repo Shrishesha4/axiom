@@ -1,5 +1,6 @@
 "use client";
 
+import { type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, LogOut, Settings, User } from "lucide-react";
@@ -8,7 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export function AppHeader({ subtitle, className }: { subtitle?: string; className?: string }) {
+export function AppHeader({
+  subtitle,
+  className,
+  leading,
+}: {
+  subtitle?: string;
+  className?: string;
+  leading?: ReactNode;
+}) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -18,7 +27,8 @@ export function AppHeader({ subtitle, className }: { subtitle?: string; classNam
 
   return (
     <header className={cn("flex shrink-0 items-center justify-between border-b border-border bg-card/80 px-6 py-4 backdrop-blur-sm", className)}>
-      <div className="flex items-center gap-4 min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
+        {leading}
         <Link href="/" className="text-sm font-semibold tracking-[0.15em] text-primary shrink-0">
           axiom.
         </Link>

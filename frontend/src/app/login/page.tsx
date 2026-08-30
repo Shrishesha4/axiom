@@ -28,7 +28,7 @@ export default function LoginPage() {
   };
 
   return (
-    <RetroDitherLayout backgroundClassName="bg-muted/30">
+    <RetroDitherLayout backgroundClassName="bg-muted">
       <div className="flex h-full items-center justify-center overflow-y-auto p-6 pointer-events-none">
       <Card className="pointer-events-auto w-full max-w-md shadow-sm">
         <CardHeader className="text-center">

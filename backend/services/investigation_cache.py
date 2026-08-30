@@ -1,6 +1,6 @@
 from typing import Any
 
-from services.live_data import fetch_clinical_trials, fetch_pubmed
+from services.live_data import fetch_clinical_trials, fetch_pubmed, normalize_condition
 from services.therapy import apply_publication_counts, normalize_drug_name
 
 _investigation_trials: dict[tuple[int, str], list[dict]] = {}
@@ -14,7 +14,7 @@ def get_investigation_trials(
     status: str | None = None,
     force_refresh: bool = False,
 ) -> list[dict]:
-    cache_key = (investigation_id, condition.lower())
+    cache_key = (investigation_id, normalize_condition(condition).lower())
     if not force_refresh and cache_key in _investigation_trials:
         trials = _investigation_trials[cache_key]
     else:

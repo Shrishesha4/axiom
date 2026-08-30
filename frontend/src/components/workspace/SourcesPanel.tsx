@@ -215,7 +215,7 @@ function SourceCard({
         render={
           <Card
             size="sm"
-            className="py-2 cursor-pointer transition-all duration-200 hover:ring-primary/30 hover:bg-muted/30 data-popup-open:ring-primary/40 data-popup-open:bg-muted/40"
+            className="cursor-pointer rounded-xl border-border/50 py-2 transition-all duration-200 hover:bg-white hover:ring-primary/30 data-popup-open:bg-white data-popup-open:ring-primary/40"
             onContextMenu={(e) => {
               e.preventDefault();
               if (!disabled) setOpen(true);

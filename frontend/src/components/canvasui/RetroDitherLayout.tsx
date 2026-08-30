@@ -1,50 +1,52 @@
 "use client";
 
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { RetroDither } from "./RetroDither";
-
-const DITHER_OPTIONS = {
-  radius: 0.5,
-  softness: 1,
-  pixelSize: 2,
-  levels: 4,
-  colorize: 0.1,
-  contrast: 0.6,
-  brightness: 0,
-  strength: 0.75,
-  baseStrength: 0,
-  invert: 0,
-  scanlines: 0,
-  pattern: "bayer" as const,
-  trail: 0.4,
-  degauss: 0.8,
-  followSpeed: 3,
-  darkColor: [0, 0, 0] as [number, number, number],
-  lightColor: [1, 1, 1] as [number, number, number],
-};
+import {
+  DITHER_BASE_OPTIONS,
+  DITHER_THEME_FALLBACK,
+  readDitherThemeColors,
+} from "./ditherTheme";
+import { RetroDither, type RetroDitherOptions } from "./RetroDither";
 
 export function RetroDitherLayout({
   children,
   className,
-  backgroundClassName = "bg-muted/30",
+  backgroundClassName = "bg-muted",
 }: {
   children: ReactNode;
   className?: string;
   backgroundClassName?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const ditherOptions = useMemo<RetroDitherOptions>(
+    () => ({
+      ...DITHER_BASE_OPTIONS,
+      ...(typeof document !== "undefined"
+        ? readDitherThemeColors()
+        : {
+            darkColor: DITHER_THEME_FALLBACK.darkColor,
+            lightColor: DITHER_THEME_FALLBACK.lightColor,
+          }),
+      colorize: DITHER_THEME_FALLBACK.colorize,
+    }),
+    [],
+  );
 
   return (
     <div
       ref={rootRef}
-      className={cn("relative h-dvh w-full min-h-0", className)}
+      className={cn("relative h-full w-full min-h-0 overflow-hidden", className)}
     >
-      <div className="absolute inset-0 z-0">
+      <div
+        aria-hidden
+        className={cn("absolute inset-0 z-0", backgroundClassName)}
+      />
+      <div className="absolute inset-0 z-[1]">
         <RetroDither
           listenTargetRef={rootRef}
           className="h-full w-full"
-          {...DITHER_OPTIONS}
+          {...ditherOptions}
         >
           <div className={cn("h-full w-full", backgroundClassName)} />
         </RetroDither>
