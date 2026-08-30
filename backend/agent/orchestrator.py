@@ -509,7 +509,7 @@ async def ask_followup(
             "content": (
                 _system_prompt()
                 + "\nYou may call tools to answer follow-up questions with fresh live data. "
-                "Never invent statistics."
+                "Never invent statistics. After tools return, answer in plain prose."
             ),
         },
         {
@@ -523,102 +523,105 @@ async def ask_followup(
         if t["function"]["name"] != "generate_executive_briefing"
     ]
 
+    used_tools = False
     for _ in range(MAX_TOOL_ROUNDS):
-        stream = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model=settings.openrouter_model,
-                messages=messages,
-                tools=followup_tools,
-                tool_choice="auto",
-                stream=True,
-                stream_options={"include_usage": True},
-                **openrouter_request_extras(),
-            )
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.openrouter_model,
+            messages=messages,
+            tools=followup_tools,
+            tool_choice="auto",
+            **openrouter_request_extras(),
         )
+        record_token_usage(db, user, _usage_tokens(response))
+        message = response.choices[0].message
 
-        tool_calls_acc: dict[int, dict[str, Any]] = {}
-        saw_tool_calls = False
-
-        for chunk in stream:
-            if hasattr(chunk, "usage") and chunk.usage:
-                record_token_usage(db, user, int(chunk.usage.total_tokens or 0))
-
-            if not chunk.choices:
-                continue
-
-            delta = chunk.choices[0].delta
-
-            if delta.tool_calls:
-                saw_tool_calls = True
-                for tc in delta.tool_calls:
-                    entry = tool_calls_acc.setdefault(
-                        tc.index,
-                        {
-                            "id": "",
-                            "type": "function",
-                            "function": {"name": "", "arguments": ""},
-                        },
-                    )
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["function"]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["function"]["arguments"] += tc.function.arguments
-                continue
-
-            if delta.content and not saw_tool_calls:
-                yield {"type": "delta", "content": delta.content}
-
-        if not saw_tool_calls:
-            return
-
-        ordered_tools = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
-        messages.append(
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": t["id"],
-                        "type": "function",
-                        "function": {
-                            "name": t["function"]["name"],
-                            "arguments": t["function"]["arguments"],
-                        },
-                    }
-                    for t in ordered_tools
-                ],
-            }
-        )
-
-        for tc in ordered_tools:
-            tool_name = tc["function"]["name"]
-            arguments = parse_tool_arguments(tc["function"]["arguments"])
-            yield {
-                "type": "tool",
-                "step": tool_name,
-                "message": TRACE_LABELS.get(tool_name, tool_name),
-            }
-            result = await asyncio.to_thread(
-                execute_tool,
-                investigation_id,
-                inv.query,
-                tool_name,
-                arguments,
-            )
+        if message.tool_calls:
+            used_tools = True
             messages.append(
                 {
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": json.dumps(result, default=str),
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in message.tool_calls
+                    ],
                 }
             )
 
-    yield {
-        "type": "delta",
-        "content": "Reached maximum tool rounds for this follow-up.",
-    }
+            for tc in message.tool_calls:
+                tool_name = tc.function.name
+                arguments = parse_tool_arguments(tc.function.arguments)
+                label = TRACE_LABELS.get(tool_name, tool_name)
+                yield {
+                    "type": "tool",
+                    "step": tool_name,
+                    "status": "running",
+                    "message": label,
+                }
+                result = await asyncio.to_thread(
+                    execute_tool,
+                    investigation_id,
+                    inv.query,
+                    tool_name,
+                    arguments,
+                )
+                complete_msg = describe_tool_result(tool_name, result)
+                yield {
+                    "type": "tool",
+                    "step": tool_name,
+                    "status": "complete",
+                    "message": complete_msg,
+                }
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result, default=str),
+                    }
+                )
+            continue
+
+        if message.content:
+            yield {"type": "delta", "content": message.content.strip()}
+        return
+
+    if used_tools:
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Using the tool results above, answer the original follow-up question in "
+                    "plain prose. Do not call any more tools."
+                ),
+            }
+        )
+
+    stream = await asyncio.to_thread(
+        lambda: client.chat.completions.create(
+            model=settings.openrouter_model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+            **openrouter_request_extras(),
+        )
+    )
+
+    for chunk in stream:
+        if hasattr(chunk, "usage") and chunk.usage:
+            record_token_usage(db, user, int(chunk.usage.total_tokens or 0))
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield {"type": "delta", "content": delta}
 
 
 def get_briefing(db: Session, inv: Investigation) -> str:

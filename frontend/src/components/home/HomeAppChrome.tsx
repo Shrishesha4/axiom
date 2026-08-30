@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SidebarHistoryFlyout } from "@/components/home/SidebarHistoryFlyout";
+import { ShellMainHeaderProvider } from "@/components/home/ShellMainHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { UserMenu } from "@/components/user/UserMenu";
 import { Button } from "@/components/ui/button";
@@ -247,26 +248,33 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
           </motion.aside>
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2">
-            <div className={mainSheet}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggleSidebar}
-                title={expanded ? "Collapse sidebar" : "Expand sidebar"}
-                className="absolute left-2 top-1.5 z-20 h-7 w-7 rounded-lg p-0 opacity-70 transition-all hover:bg-black/[0.05] hover:opacity-100"
-              >
-                <PanelLeft className="h-4 w-4" />
-              </Button>
-              <RetroDitherLayout
-                className="min-h-0 flex-1 rounded-[inherit]"
-                backgroundClassName="bg-white"
-              >
-                <div className="pointer-events-auto h-full min-h-0 overflow-hidden pt-8">
-                  {children}
+            <ShellMainHeaderProvider>
+              {(header) => (
+                <div className={mainSheet}>
+                  <RetroDitherLayout
+                    className="min-h-0 flex-1 rounded-[inherit]"
+                    backgroundClassName="bg-white"
+                  >
+                    <div className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden">
+                      <div className="flex shrink-0 items-center gap-1.5 px-2 py-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={toggleSidebar}
+                          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+                          className="h-7 w-7 shrink-0 rounded-lg p-0 opacity-70 transition-all hover:bg-black/[0.05] hover:opacity-100"
+                        >
+                          <PanelLeft className="h-4 w-4" />
+                        </Button>
+                        <div className="min-w-0 flex-1">{header}</div>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+                    </div>
+                  </RetroDitherLayout>
                 </div>
-              </RetroDitherLayout>
-            </div>
+              )}
+            </ShellMainHeaderProvider>
           </div>
         </div>
       </div>

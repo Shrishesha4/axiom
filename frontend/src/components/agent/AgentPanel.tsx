@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Loader2, Send } from "lucide-react";
 import { AgentTrace } from "./AgentTrace";
+import { ChatMessageContent } from "./ChatMessageContent";
 import { explainSignals, streamAskFollowup, getInvestigation } from "@/lib/api";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { FollowUp, Signal } from "@/lib/api";
@@ -28,6 +29,12 @@ type LiveMessage = {
   status: "sending" | "sent" | "streaming" | "complete" | "error";
 };
 
+type ToolStep = {
+  step: string;
+  message: string;
+  status: "running" | "complete";
+};
+
 function followupsToMessages(followups: FollowUp[]): LiveMessage[] {
   const messages: LiveMessage[] = [];
   for (const item of followups) {
@@ -47,6 +54,25 @@ function followupsToMessages(followups: FollowUp[]): LiveMessage[] {
   return messages;
 }
 
+function FollowUpToolTrace({ steps }: { steps: ToolStep[] }) {
+  if (!steps.length) return null;
+
+  return (
+    <div className="mb-2 w-full max-w-[95%] space-y-1 rounded-xl border border-border/40 bg-[#f5f6f6] px-3 py-2">
+      {steps.map((step) => (
+        <div key={step.step} className="flex items-start gap-2 text-[11px] text-muted-foreground">
+          {step.status === "complete" ? (
+            <Check className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+          ) : (
+            <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin text-primary" />
+          )}
+          <span className="leading-snug">{step.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AgentPanel({
   investigationId,
   signals,
@@ -60,9 +86,11 @@ export function AgentPanel({
   const [isExplaining, setIsExplaining] = useState(false);
   const [followup, setFollowup] = useState("");
   const [messages, setMessages] = useState<LiveMessage[]>(() =>
-    followupsToMessages(savedFollowups)
+    followupsToMessages(savedFollowups),
   );
   const [isAsking, setIsAsking] = useState(false);
+  const [liveToolSteps, setLiveToolSteps] = useState<ToolStep[]>([]);
+  const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,7 +100,7 @@ export function AgentPanel({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, explanation, traceSteps]);
+  }, [messages, explanation, traceSteps, liveToolSteps]);
 
   const handleExplain = async () => {
     setIsExplaining(true);
@@ -103,6 +131,8 @@ export function AgentPanel({
 
     setFollowup("");
     setIsAsking(true);
+    setLiveToolSteps([]);
+    setStreamingAssistantId(assistantId);
     setMessages((prev) => [
       ...prev,
       { id: userId, role: "user", content: q, status: "sending" },
@@ -114,7 +144,7 @@ export function AgentPanel({
     }
 
     setMessages((prev) =>
-      prev.map((m) => (m.id === userId ? { ...m, status: "sent" } : m))
+      prev.map((m) => (m.id === userId ? { ...m, status: "sent" } : m)),
     );
 
     await streamAskFollowup(
@@ -124,33 +154,37 @@ export function AgentPanel({
         if (event.type === "delta") {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + event.content } : m
-            )
+              m.id === assistantId ? { ...m, content: m.content + event.content } : m,
+            ),
           );
         }
         if (event.type === "tool") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    content: m.content
-                      ? `${m.content}\n\n_${event.message}…_`
-                      : `_${event.message}…_`,
-                    status: "streaming",
-                  }
-                : m
-            )
-          );
+          setLiveToolSteps((prev) => {
+            const next = [...prev];
+            const index = next.findIndex((step) => step.step === event.step);
+            const entry: ToolStep = {
+              step: event.step,
+              message: event.message,
+              status: event.status === "complete" ? "complete" : "running",
+            };
+            if (index >= 0) {
+              next[index] = entry;
+            } else {
+              next.push(entry);
+            }
+            return next;
+          });
         }
       },
       async () => {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantId ? { ...m, status: "complete" } : m
-          )
+            m.id === assistantId ? { ...m, status: "complete" } : m,
+          ),
         );
         setIsAsking(false);
+        setLiveToolSteps([]);
+        setStreamingAssistantId(null);
         try {
           const inv = await getInvestigation(investigationId);
           setMessages(followupsToMessages(inv.followups || []));
@@ -166,15 +200,17 @@ export function AgentPanel({
             if (m.id === assistantId) {
               return {
                 ...m,
-                content: err.message || "Unable to get response.",
+                content: m.content || err.message || "Unable to get response.",
                 status: "error",
               };
             }
             return m;
-          })
+          }),
         );
         setIsAsking(false);
-      }
+        setLiveToolSteps([]);
+        setStreamingAssistantId(null);
+      },
     );
   };
 
@@ -190,7 +226,7 @@ export function AgentPanel({
               animate={{ opacity: 1, y: 0 }}
               className="space-y-3"
             >
-              <p className="text-xs text-muted-foreground uppercase tracking-widest">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Signals ({signals.length})
               </p>
               {signals.map((s) => (
@@ -215,8 +251,8 @@ export function AgentPanel({
           {explanation && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <Card size="sm" className="rounded-xl border-border/50 shadow-none">
-                <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed pt-4">
-                  {explanation}
+                <CardContent className="pt-4 text-sm text-muted-foreground">
+                  <ChatMessageContent content={explanation} />
                 </CardContent>
               </Card>
             </motion.div>
@@ -224,7 +260,7 @@ export function AgentPanel({
 
           {messages.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-widest">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Follow-up
               </p>
               {messages.map((msg) => (
@@ -232,39 +268,58 @@ export function AgentPanel({
                   key={msg.id}
                   className={cn(
                     "flex flex-col gap-1",
-                    msg.role === "user" ? "items-end" : "items-start"
+                    msg.role === "user" ? "items-end" : "items-start",
                   )}
                 >
+                  {msg.role === "assistant" &&
+                  msg.id === streamingAssistantId &&
+                  liveToolSteps.length > 0 ? (
+                    <FollowUpToolTrace steps={liveToolSteps} />
+                  ) : null}
+
                   <div
                     className={cn(
-                      "max-w-[95%] whitespace-pre-wrap px-3.5 py-2.5 text-sm leading-relaxed",
+                      "max-w-[95%] px-3.5 py-2.5 text-sm",
                       msg.role === "user"
                         ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground shadow-sm"
                         : "rounded-2xl rounded-bl-md border border-border/50 bg-white text-foreground shadow-sm",
                     )}
                   >
-                    {msg.content || (msg.status === "streaming" ? "..." : "")}
+                    {msg.role === "user" ? (
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    ) : msg.content ? (
+                      <ChatMessageContent content={msg.content} />
+                    ) : msg.status === "streaming" && liveToolSteps.length > 0 ? (
+                      <p className="text-muted-foreground">Analyzing live data…</p>
+                    ) : msg.status === "streaming" ? (
+                      <p className="text-muted-foreground">...</p>
+                    ) : null}
                   </div>
+
                   {msg.role === "user" && (
-                    <span className="text-[10px] text-muted-foreground flex items-center gap-1 px-1">
+                    <span className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
                       {msg.status === "sending" && (
                         <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="h-3 w-3 animate-spin" />
                           Sending
                         </>
                       )}
                       {msg.status === "sent" && (
                         <>
-                          <Check className="w-3 h-3 text-primary" />
+                          <Check className="h-3 w-3 text-primary" />
                           Sent
                         </>
                       )}
                     </span>
                   )}
                   {msg.role === "assistant" && msg.status === "streaming" && (
-                    <span className="text-[10px] text-muted-foreground flex items-center gap-1 px-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Responding
+                    <span className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      {liveToolSteps.some((step) => step.status === "running")
+                        ? "Running tools…"
+                        : msg.content
+                          ? "Writing answer…"
+                          : "Responding…"}
                     </span>
                   )}
                 </div>
@@ -305,9 +360,9 @@ export function AgentPanel({
               className="shrink-0 rounded-full"
             >
               {isAsking ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Send className="w-4 h-4" />
+                <Send className="h-4 w-4" />
               )}
             </Button>
           </div>

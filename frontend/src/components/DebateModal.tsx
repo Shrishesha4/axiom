@@ -7,8 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GeneratedTextBlock } from "@/components/workspace/GeneratedSectionCard";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
 
 interface DebateModalProps {
   open: boolean;
@@ -49,13 +49,15 @@ export function DebateModal({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {bull || (isStreaming ? "" : "—")}
-                </p>
+                {bull ? (
+                  <GeneratedTextBlock text={bull} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">{isStreaming ? "" : "—"}</p>
+                )}
               </CardContent>
             </Card>
 
-            <Card className={cn("border-muted-foreground/30")}>
+            <Card className="border-muted-foreground/30">
               <CardHeader>
                 <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground font-normal flex items-center gap-2">
                   Bear case
@@ -63,9 +65,11 @@ export function DebateModal({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {bear || (isStreaming ? "" : "—")}
-                </p>
+                {bear ? (
+                  <GeneratedTextBlock text={bear} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">{isStreaming ? "" : "—"}</p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -79,7 +83,11 @@ export function DebateModal({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{synthesis}</p>
+                {synthesis ? (
+                  <GeneratedTextBlock text={synthesis} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">{isStreaming ? "" : "—"}</p>
+                )}
               </CardContent>
             </Card>
           )}

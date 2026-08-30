@@ -9,13 +9,27 @@ import {
 } from "@/components/ui/table";
 
 function renderInline(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} className="font-medium text-foreground">
           {part.slice(2, -2)}
         </strong>
+      );
+    }
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      return (
+        <a
+          key={i}
+          href={linkMatch[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {linkMatch[1]}
+        </a>
       );
     }
     return <span key={i}>{part}</span>;
@@ -26,27 +40,46 @@ function parseTableRow(line: string): string[] {
   return line
     .split("|")
     .map((cell) => cell.trim())
-    .filter((cell, index, arr) => !(index === 0 && cell === "") && !(index === arr.length - 1 && cell === ""));
+    .filter(
+      (cell, index, arr) =>
+        !(index === 0 && cell === "") && !(index === arr.length - 1 && cell === ""),
+    );
 }
 
 function isTableSeparator(line: string): boolean {
   return /^\|?[\s\-:|]+\|?$/.test(line.trim());
 }
 
-export function BriefingMarkdown({ content }: { content: string }) {
-  const lines = content.split("\n");
+export function BriefingMarkdown({
+  content,
+  compact = false,
+}: {
+  content: string;
+  compact?: boolean;
+}) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
   let key = 0;
 
+  const h1Class = compact
+    ? "text-lg font-semibold tracking-tight text-foreground mb-2"
+    : "text-2xl font-semibold tracking-tight text-foreground mb-2";
+  const h2Class = compact
+    ? "text-sm font-semibold text-primary mt-5 mb-2 first:mt-0"
+    : "text-base font-semibold text-primary mt-8 mb-3";
+  const h3Class = compact
+    ? "text-sm font-medium text-foreground mt-4 mb-1.5"
+    : "text-sm font-semibold text-foreground mt-6 mb-2";
+
   while (i < lines.length) {
-    const line = lines[i];
+    const line = lines[i].trimEnd();
 
     if (line.startsWith("# ")) {
       blocks.push(
-        <h1 key={key++} className="text-2xl font-semibold tracking-tight text-foreground mb-2">
-          {line.slice(2)}
-        </h1>
+        <h1 key={key++} className={h1Class}>
+          {renderInline(line.slice(2))}
+        </h1>,
       );
       i++;
       continue;
@@ -54,9 +87,19 @@ export function BriefingMarkdown({ content }: { content: string }) {
 
     if (line.startsWith("## ")) {
       blocks.push(
-        <h2 key={key++} className="text-base font-semibold text-primary mt-8 mb-3">
-          {line.slice(3)}
-        </h2>
+        <h2 key={key++} className={h2Class}>
+          {renderInline(line.slice(3))}
+        </h2>,
+      );
+      i++;
+      continue;
+    }
+
+    if (line.startsWith("### ")) {
+      blocks.push(
+        <h3 key={key++} className={h3Class}>
+          {renderInline(line.slice(4))}
+        </h3>,
       );
       i++;
       continue;
@@ -66,7 +109,7 @@ export function BriefingMarkdown({ content }: { content: string }) {
       const headers = parseTableRow(line);
       i += 2;
       const rows: string[][] = [];
-      while (i < lines.length && lines[i].startsWith("|")) {
+      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
         rows.push(parseTableRow(lines[i]));
         i++;
       }
@@ -87,33 +130,45 @@ export function BriefingMarkdown({ content }: { content: string }) {
                 <TableRow key={row.join("-")}>
                   {row.map((cell, ci) => (
                     <TableCell key={`${row[0]}-${ci}`} className="text-sm">
-                      {cell}
+                      {renderInline(cell)}
                     </TableCell>
                   ))}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </div>
+        </div>,
       );
       continue;
     }
 
     if (line.startsWith("- ")) {
+      const items: ReactNode[] = [];
+      while (i < lines.length && lines[i].trimStart().startsWith("- ")) {
+        const item = lines[i].trimStart().slice(2);
+        items.push(
+          <li key={key++} className="text-sm leading-relaxed text-muted-foreground">
+            {renderInline(item)}
+          </li>,
+        );
+        i++;
+      }
       blocks.push(
-        <li key={key++} className="text-sm text-muted-foreground ml-4 list-disc">
-          {renderInline(line.slice(2))}
-        </li>
+        <ul key={key++} className="ml-4 list-disc space-y-1.5">
+          {items}
+        </ul>,
       );
-      i++;
       continue;
     }
 
     if (line.startsWith("*") && line.endsWith("*") && !line.startsWith("**")) {
       blocks.push(
-        <p key={key++} className="text-xs text-muted-foreground mt-8 italic border-t border-border pt-4">
+        <p
+          key={key++}
+          className="mt-6 border-t border-border pt-4 text-xs italic text-muted-foreground"
+        >
           {line.slice(1, -1)}
-        </p>
+        </p>,
       );
       i++;
       continue;
@@ -125,9 +180,9 @@ export function BriefingMarkdown({ content }: { content: string }) {
     }
 
     blocks.push(
-      <p key={key++} className="text-sm leading-relaxed text-foreground/90">
+      <p key={key++} className="text-sm leading-relaxed text-muted-foreground">
         {renderInline(line)}
-      </p>
+      </p>,
     );
     i++;
   }

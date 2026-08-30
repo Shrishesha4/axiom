@@ -2,10 +2,10 @@
 
 import { memo } from "react";
 import dynamic from "next/dynamic";
-import { FileText } from "lucide-react";
+import { FileText, Swords } from "lucide-react";
 import type { InvestigationSummary } from "@/lib/api";
 import { INTENT_LABELS, resolveDashboardConfig } from "@/lib/dashboard-config";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MECHANISM_COLORS } from "@/lib/chart-colors";
+import {
+  GeneratedSectionCard,
+  GeneratedTextBlock,
+  SectionHeaderRow,
+} from "@/components/workspace/GeneratedSectionCard";
+import { Spinner } from "@/components/ui/spinner";
 
 const CompetitiveBubbleChart = dynamic(
   () =>
@@ -38,35 +44,53 @@ function ChartPlaceholder() {
   return <div className="h-52 w-full animate-pulse rounded-md bg-muted/60" />;
 }
 
+export type InlineDebate = {
+  bull: string;
+  bear: string;
+  synthesis: string;
+};
+
 interface InvestigationDashboardProps {
   summary: InvestigationSummary;
   query: string;
   highlightMechanism: string | null;
+  debate?: InlineDebate | null;
+  debateLoading?: boolean;
+  leadMemo?: { therapyName: string; content: string } | null;
+  leadMemoLoading?: boolean;
   onHighlight?: (mechanism: string | null) => void;
   onDraftMemo?: (therapyName: string) => void;
+  onOpenDebate?: () => void;
 }
 
 export const InvestigationDashboard = memo(function InvestigationDashboard({
   summary,
   query,
   highlightMechanism,
+  debate,
+  debateLoading = false,
+  leadMemo,
+  leadMemoLoading = false,
   onHighlight,
   onDraftMemo,
+  onOpenDebate,
 }: InvestigationDashboardProps) {
   const landscape = summary.landscape;
   const dashboard = resolveDashboardConfig(summary, query);
   const titles = dashboard.section_titles;
   const sections = dashboard.sections;
+  const topRanking = summary.rankings[0];
+  const showDebate = debateLoading || Boolean(debate?.bull || debate?.bear || debate?.synthesis);
 
   return (
     <div className="space-y-6">
       <div>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="rounded-full border-primary/30 text-primary capitalize">
             {INTENT_LABELS[dashboard.intent] || dashboard.intent}
           </Badge>
+          <h2 className="text-lg font-medium tracking-wide">{dashboard.title}</h2>
         </div>
-        <h2 className="text-lg font-medium tracking-wide">{dashboard.title}</h2>
         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{dashboard.subtitle}</p>
       </div>
 
@@ -82,14 +106,54 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
       </div>
 
       {sections.market_signal && (
+        <GeneratedSectionCard
+          title={titles.market_signal || "Market signal"}
+          text={summary.market_signal}
+        />
+      )}
+
+      {showDebate && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-              {titles.market_signal || "Market signal"}
-            </CardTitle>
+            <SectionHeaderRow
+              title="Investment debate"
+              action={
+                onOpenDebate ? (
+                  <Button variant="outline" size="xs" onClick={onOpenDebate}>
+                    <Swords className="h-3.5 w-3.5" />
+                    Open
+                  </Button>
+                ) : null
+              }
+            />
           </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-relaxed text-muted-foreground">{summary.market_signal}</p>
+          <CardContent className="space-y-4">
+            {debateLoading && !debate?.bull && !debate?.bear ? (
+              <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                <Spinner className="h-4 w-4 text-primary" />
+                Generating bull / bear cases…
+              </div>
+            ) : null}
+            {debate?.bull ? (
+              <div>
+                <p className="mb-2 text-[10px] uppercase tracking-widest text-primary">Bull</p>
+                <GeneratedTextBlock text={debate.bull} />
+              </div>
+            ) : null}
+            {debate?.bear ? (
+              <div>
+                <p className="mb-2 text-[10px] uppercase tracking-widest text-destructive">Bear</p>
+                <GeneratedTextBlock text={debate.bear} />
+              </div>
+            ) : null}
+            {debate?.synthesis ? (
+              <div className="border-t border-border/50 pt-4">
+                <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Synthesis
+                </p>
+                <GeneratedTextBlock text={debate.synthesis} />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}
@@ -97,9 +161,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
       {sections.competitive_matrix && summary.matrix.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-              {titles.competitive_matrix || "Competitive landscape"}
-            </CardTitle>
+            <SectionHeaderRow title={titles.competitive_matrix || "Competitive landscape"} />
           </CardHeader>
           <CardContent>
             <CompetitiveBubbleChart data={summary.matrix} highlightMechanism={highlightMechanism} />
@@ -112,9 +174,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
           {sections.phase_chart && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-                  {titles.phase_chart || "Trial phases"}
-                </CardTitle>
+                <SectionHeaderRow title={titles.phase_chart || "Trial phases"} />
               </CardHeader>
               <CardContent>
                 <PhaseChart data={landscape.phase_distribution} />
@@ -124,9 +184,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
           {sections.mechanism_chart && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-                  {titles.mechanism_chart || "Mechanisms"}
-                </CardTitle>
+                <SectionHeaderRow title={titles.mechanism_chart || "Mechanisms"} />
               </CardHeader>
               <CardContent>
                 <MechanismChart data={landscape.mechanism_distribution} />
@@ -139,17 +197,22 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
       {sections.whitespace && summary.opportunities.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-              {titles.whitespace || "White-space opportunities"}
-            </CardTitle>
+            <SectionHeaderRow title={titles.whitespace || "White-space opportunities"} />
           </CardHeader>
           <CardContent className="space-y-3">
             {summary.opportunities.map((o) => (
-              <button
+              <div
                 key={o.mechanism}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onHighlight?.(highlightMechanism === o.mechanism ? null : o.mechanism)}
-                className="-mx-2 w-full rounded-md p-2 text-left transition-colors hover:bg-muted/50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onHighlight?.(highlightMechanism === o.mechanism ? null : o.mechanism);
+                  }
+                }}
+                className="-mx-2 w-full cursor-pointer rounded-md p-2 text-left transition-colors hover:bg-muted/50"
               >
                 <div className="flex items-center gap-2">
                   <span
@@ -161,8 +224,10 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
                     {o.opportunity_score}
                   </Badge>
                 </div>
-                <p className="mt-1 pl-4 text-xs text-muted-foreground">{o.rationale}</p>
-              </button>
+                <div className="mt-1 pl-4">
+                  <GeneratedTextBlock text={o.rationale} />
+                </div>
+              </div>
             ))}
           </CardContent>
         </Card>
@@ -171,9 +236,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
       {sections.trials_table && summary.trials.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-              {titles.trials_table || "Clinical trials"}
-            </CardTitle>
+            <SectionHeaderRow title={titles.trials_table || "Clinical trials"} />
           </CardHeader>
           <CardContent>
             <Table>
@@ -207,12 +270,18 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
       {sections.momentum_rankings && summary.rankings.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-normal uppercase tracking-widest text-muted-foreground">
-              {titles.momentum_rankings || "Competitive momentum"}
-            </CardTitle>
-            <p className="text-[11px] text-muted-foreground/70">
-              PoS and filing-year estimates are MVP heuristics, not validated forecasts.
-            </p>
+            <SectionHeaderRow
+              title={titles.momentum_rankings || "Competitive momentum"}
+              subtitle="PoS and filing-year estimates are MVP heuristics, not validated forecasts."
+              action={
+                topRanking && onDraftMemo ? (
+                  <Button variant="outline" size="xs" onClick={() => onDraftMemo(topRanking.name)}>
+                    <FileText className="h-3.5 w-3.5" />
+                    BD memo
+                  </Button>
+                ) : null
+              }
+            />
           </CardHeader>
           <CardContent className="space-y-2">
             {summary.rankings.slice(0, 5).map((r, i) => (
@@ -230,18 +299,24 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
                 <span className="w-12 text-right font-mono text-xs text-primary">
                   {r.momentum_score}
                 </span>
-                {onDraftMemo && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title="Draft BD memo"
-                    onClick={() => onDraftMemo(r.name)}
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                  </Button>
-                )}
               </div>
             ))}
+
+            {topRanking && (leadMemoLoading || leadMemo?.content) ? (
+              <div className="mt-4 border-t border-border/50 pt-4">
+                <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                  BD memo · {topRanking.name}
+                </p>
+                {leadMemoLoading && !leadMemo?.content ? (
+                  <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                    <Spinner className="h-4 w-4 text-primary" />
+                    Drafting BD memo…
+                  </div>
+                ) : leadMemo?.content ? (
+                  <GeneratedTextBlock text={leadMemo.content} />
+                ) : null}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}

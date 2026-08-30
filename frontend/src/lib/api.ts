@@ -298,7 +298,7 @@ export async function explainSignals(id: number): Promise<ReadableStream<Uint8Ar
 
 export type FollowUpStreamEvent =
   | { type: "delta"; content: string }
-  | { type: "tool"; step: string; message: string }
+  | { type: "tool"; step: string; message: string; status?: "running" | "complete" }
   | { type: "done" }
   | { type: "error"; message: string };
 
