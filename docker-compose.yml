@@ -29,6 +29,8 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@axiom.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       DEFAULT_USER_TOKEN_LIMIT: ${DEFAULT_USER_TOKEN_LIMIT:-100000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -40,6 +42,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     ports:
       - "3001:3000"
     depends_on:

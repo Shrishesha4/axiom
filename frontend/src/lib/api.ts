@@ -572,10 +572,10 @@ export async function removeAvatar(): Promise<import("@/lib/auth").AuthUser> {
   return res.json();
 }
 
-export async function deleteAccount(password: string): Promise<void> {
+export async function deleteAccount(password?: string): Promise<void> {
   const res = await apiFetch("/api/auth/me", {
     method: "DELETE",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(password ? { password } : {}),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

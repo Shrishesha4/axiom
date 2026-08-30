@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     admin_password: str = "admin123"
     admin_name: str = "Admin"
     default_user_token_limit: int = 100_000
+    google_client_id: str = ""
+    google_client_secret: str = ""
 
     class Config:
         env_file = ".env"

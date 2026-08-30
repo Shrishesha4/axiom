@@ -30,6 +30,8 @@ export default function SettingsPage() {
 
   if (!user) return null;
 
+  const isGoogleAccount = user.auth_provider === "google" || user.has_password === false;
+
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
       setError("New passwords do not match.");
@@ -55,7 +57,7 @@ export default function SettingsPage() {
     setBusy(true);
     setError("");
     try {
-      await deleteAccount(deletePassword);
+      await deleteAccount(isGoogleAccount ? undefined : deletePassword);
       clearAuth();
       logout();
     } catch (err) {
@@ -75,39 +77,45 @@ export default function SettingsPage() {
 
           <Card className="mt-8 rounded-2xl border-border/50 shadow-none">
             <CardHeader>
-              <CardTitle>Reset password</CardTitle>
-              <CardDescription>Choose a new password for your account.</CardDescription>
+              <CardTitle>Account</CardTitle>
+              <CardDescription>
+                {isGoogleAccount
+                  ? "You sign in with Google. Password changes are not available."
+                  : "Security and account preferences."}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                type="password"
-                placeholder="Current password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="rounded-xl bg-[#f5f6f6]"
-              />
-              <Input
-                type="password"
-                placeholder="New password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="rounded-xl bg-[#f5f6f6]"
-              />
-              <Input
-                type="password"
-                placeholder="Confirm new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="rounded-xl bg-[#f5f6f6]"
-              />
-              <Button
-                onClick={() => void handleChangePassword()}
-                disabled={busy || !currentPassword || !newPassword || !confirmPassword}
-                className="rounded-xl"
-              >
-                {busy ? "Updating..." : "Update password"}
-              </Button>
-            </CardContent>
+            {!isGoogleAccount ? (
+              <CardContent className="space-y-3">
+                <Input
+                  type="password"
+                  placeholder="Current password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="rounded-xl bg-[#f5f6f6]"
+                />
+                <Input
+                  type="password"
+                  placeholder="New password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="rounded-xl bg-[#f5f6f6]"
+                />
+                <Input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="rounded-xl bg-[#f5f6f6]"
+                />
+                <Button
+                  onClick={() => void handleChangePassword()}
+                  disabled={busy || !currentPassword || !newPassword || !confirmPassword}
+                  className="rounded-xl"
+                >
+                  {busy ? "Updating..." : "Update password"}
+                </Button>
+              </CardContent>
+            ) : null}
           </Card>
 
           <Card className="mt-4 rounded-2xl border-destructive/20 shadow-none">
@@ -144,16 +152,20 @@ export default function SettingsPage() {
           <DialogHeader>
             <DialogTitle>Delete account?</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. Enter your password to confirm.
+              {isGoogleAccount
+                ? "This action cannot be undone. Your account and all investigations will be permanently deleted."
+                : "This action cannot be undone. Enter your password to confirm."}
             </DialogDescription>
           </DialogHeader>
-          <Input
-            type="password"
-            placeholder="Your password"
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
-            className="rounded-xl bg-[#f5f6f6]"
-          />
+          {!isGoogleAccount ? (
+            <Input
+              type="password"
+              placeholder="Your password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              className="rounded-xl bg-[#f5f6f6]"
+            />
+          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
@@ -161,7 +173,7 @@ export default function SettingsPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={busy || !deletePassword}
+              disabled={busy || (!isGoogleAccount && !deletePassword)}
               onClick={() => void handleDeleteAccount()}
             >
               {busy ? "Deleting..." : "Delete account"}

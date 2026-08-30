@@ -19,6 +19,7 @@ import {
   setSessionExpiredHandler,
   subscribeAuthStorage,
 } from "@/lib/auth";
+import { setLastAuthProvider } from "@/lib/last-auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -27,6 +28,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: (code: string, redirectUri: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -36,11 +38,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const PUBLIC_PATHS = ["/login", "/signup"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Must start `null` on every render, matching the server (which has no
-  // localStorage) — seeding this from getStoredUser() in a lazy initializer
-  // would make the client's first hydration pass diverge from the
-  // server-rendered HTML wherever `user` gates output (e.g. AppHeader),
-  // triggering a hydration mismatch (React error #418).
   const storedUserRaw = useSyncExternalStore(
     subscribeAuthStorage,
     getStoredUserSnapshot,
@@ -117,10 +114,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Login failed");
+      throw new Error(
+        typeof err.detail === "string" ? err.detail : "Login failed",
+      );
     }
     const data = await res.json();
     setAuth(data.access_token, data.user);
+    setLastAuthProvider("email");
     setUser(data.user);
     router.push("/");
   }, [router]);
@@ -133,10 +133,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Signup failed");
+      throw new Error(
+        typeof err.detail === "string" ? err.detail : "Signup failed",
+      );
     }
     const data = await res.json();
     setAuth(data.access_token, data.user);
+    setLastAuthProvider("email");
+    setUser(data.user);
+    router.push("/");
+  }, [router]);
+
+  const loginWithGoogle = useCallback(async (code: string, redirectUri: string) => {
+    const res = await fetch(`${API_URL}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        typeof err.detail === "string" ? err.detail : "Google sign-in failed",
+      );
+    }
+    const data = await res.json();
+    setAuth(data.access_token, data.user);
+    setLastAuthProvider("google");
     setUser(data.user);
     router.push("/");
   }, [router]);
@@ -148,8 +170,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const value = useMemo(
-    () => ({ user: activeUser, loading, login, signup, logout, refreshUser }),
-    [activeUser, loading, login, signup, logout, refreshUser]
+    () => ({
+      user: activeUser,
+      loading,
+      login,
+      signup,
+      loginWithGoogle,
+      logout,
+      refreshUser,
+    }),
+    [activeUser, loading, login, signup, loginWithGoogle, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

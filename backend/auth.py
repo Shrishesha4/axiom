@@ -21,7 +21,9 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def verify_password(plain: str, hashed: str) -> bool:
+def verify_password(plain: str, hashed: str | None) -> bool:
+    if not hashed:
+        return False
     return pwd_context.verify(plain, hashed)
 
 
@@ -109,5 +111,7 @@ def user_to_dict(user: User) -> dict:
         "tokens_used": user.tokens_used,
         "tokens_remaining": max(0, user.token_limit - user.tokens_used),
         "is_active": user.is_active,
+        "has_password": bool(user.hashed_password),
+        "auth_provider": "google" if user.google_id else "password",
         "created_at": serialize_utc(user.created_at),
     }

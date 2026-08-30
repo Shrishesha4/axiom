@@ -15,6 +15,7 @@ from auth import (
 )
 from config import get_settings
 from database import get_db
+from google_auth import exchange_google_code, verify_google_id_token
 from models.models import AgentTrace, Investigation, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -51,7 +52,72 @@ class ChangePasswordRequest(BaseModel):
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str
+    password: str | None = None
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str | None = None
+    code: str | None = None
+    redirect_uri: str | None = None
+
+
+def _upsert_google_user(db: Session, payload: dict) -> User:
+    google_id = payload["sub"]
+    email = payload["email"].lower()
+    name = (payload.get("name") or email.split("@")[0]).strip() or "User"
+    picture = payload.get("picture")
+
+    user = db.query(User).filter(User.google_id == google_id).first()
+    if user:
+        if not user.is_active:
+            raise HTTPException(403, "Account disabled")
+        if picture and not user.avatar_url:
+            user.avatar_url = picture
+        db.commit()
+        db.refresh(user)
+        return user
+
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        if user.google_id and user.google_id != google_id:
+            raise HTTPException(409, "This email is linked to another Google account")
+        user.google_id = google_id
+        if picture and not user.avatar_url:
+            user.avatar_url = picture
+        if payload.get("name"):
+            user.name = payload["name"].strip()
+        db.commit()
+        db.refresh(user)
+        return user
+
+    user = User(
+        email=email,
+        name=name,
+        google_id=google_id,
+        avatar_url=picture,
+        role="user",
+        token_limit=settings.default_user_token_limit,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/google", response_model=AuthResponse)
+async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+    if body.credential:
+        payload = await verify_google_id_token(body.credential)
+    elif body.code and body.redirect_uri:
+        payload = await exchange_google_code(body.code, body.redirect_uri)
+    else:
+        raise HTTPException(400, "Google credential or authorization code required")
+
+    user = _upsert_google_user(db, payload)
+    return AuthResponse(
+        access_token=create_access_token(user.id),
+        user=user_to_dict(user),
+    )
 
 
 @router.post("/signup", response_model=AuthResponse)
@@ -80,7 +146,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=AuthResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email.lower()).first()
-    if not user or not verify_password(body.password, user.hashed_password):
+    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(401, "Invalid email or password")
     if not user.is_active:
         raise HTTPException(403, "Account disabled")
@@ -114,6 +180,8 @@ def change_password(
     user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
+    if not user.hashed_password:
+        raise HTTPException(400, "Password sign-in is not enabled for this account")
     if not verify_password(body.current_password, user.hashed_password):
         raise HTTPException(400, "Current password is incorrect")
     user.hashed_password = hash_password(body.new_password)
@@ -159,8 +227,9 @@ def delete_account(
     user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
-    if not verify_password(body.password, user.hashed_password):
-        raise HTTPException(400, "Password is incorrect")
+    if user.hashed_password:
+        if not body.password or not verify_password(body.password, user.hashed_password):
+            raise HTTPException(400, "Password is incorrect")
 
     inv_ids = [
         row[0]

@@ -12,6 +12,8 @@ export interface AuthUser {
   tokens_used: number;
   tokens_remaining: number;
   is_active: boolean;
+  has_password?: boolean;
+  auth_provider?: "google" | "password";
   created_at: string;
 }
 

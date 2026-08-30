@@ -61,6 +61,18 @@ def _migrate():
                 "ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT NULL"
             )
         )
+        conn.execute(
+            text(
+                "ALTER TABLE users "
+                "ALTER COLUMN hashed_password DROP NOT NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE"
+            )
+        )
 
 
 def _seed_admin():
