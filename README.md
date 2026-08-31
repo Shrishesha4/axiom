@@ -75,13 +75,14 @@ npm run dev
               ▼
         ┌──────────────┐
         │  OpenRouter  │
-        │  (GPT-4o)    │
+        │ DeepSeek V4  │
+        │    Flash     │
         └──────────────┘
 ```
 
 ## Tech Stack
 
 - **Frontend:** Next.js, Tailwind CSS, shadcn/ui, Recharts
-- **Backend:** FastAPI, SQLAlchemy, OpenRouter function calling
+- **Backend:** FastAPI, SQLAlchemy, OpenRouter function calling (DeepSeek V4 Flash)
 - **Database:** PostgreSQL 16 (investigation state)
 - **Infrastructure:** Docker Compose

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     database_url: str = "postgresql://axiom:axiom@localhost:5432/axiom_db"
     openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-4o"
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
     openrouter_web_search_enabled: bool = False
     openrouter_web_search_max_results: int = 5
     openrouter_web_search_engine: str = ""
