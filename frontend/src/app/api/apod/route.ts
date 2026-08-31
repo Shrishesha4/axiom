@@ -25,15 +25,14 @@ export async function GET() {
     if (!res.ok) throw new Error("APOD fetch failed");
 
     const data = (await res.json()) as ApodItem;
-    const mediaUrl =
-      data.media_type === "image"
-        ? data.url
-        : data.thumbnail_url || data.url;
+    const isVideo = data.media_type === "video";
 
     return NextResponse.json({
       title: data.title,
       explanation: data.explanation,
-      mediaUrl,
+      mediaType: data.media_type,
+      mediaUrl: isVideo ? data.thumbnail_url ?? "" : data.url,
+      videoUrl: isVideo ? data.url : undefined,
       copyright: data.copyright,
       date: data.date,
     });
@@ -43,6 +42,7 @@ export async function GET() {
         title: "Pillars of Creation",
         explanation:
           "NASA's James Webb Space Telescope reveals newborn stars in a stellar nursery — discovery takes patience, just like a good investigation.",
+        mediaType: "image",
         mediaUrl:
           "https://images-assets.nasa.gov/image/PIA04921/PIA04921~medium.jpg",
         date: new Date().toISOString().slice(0, 10),

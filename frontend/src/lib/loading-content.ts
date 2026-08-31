@@ -23,9 +23,26 @@ const APOD_CACHE_KEY = "axiom-apod-cache";
 export interface ApodCache {
   title: string;
   explanation: string;
+  mediaType: "image" | "video";
   mediaUrl: string;
+  videoUrl?: string;
   copyright?: string;
   date: string;
+}
+
+function normalizeApodCache(parsed: ApodCache): ApodCache {
+  if (parsed.mediaType) return parsed;
+
+  if (/\.(mp4|webm|mov)(\?|$)/i.test(parsed.mediaUrl)) {
+    return {
+      ...parsed,
+      mediaType: "video",
+      videoUrl: parsed.videoUrl ?? parsed.mediaUrl,
+      mediaUrl: "",
+    };
+  }
+
+  return { ...parsed, mediaType: "image" };
 }
 
 export function pickTip(seed?: number) {
@@ -45,7 +62,7 @@ export function readCachedApod(): ApodCache | null {
   try {
     const raw = sessionStorage.getItem(APOD_CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as ApodCache;
+    const parsed = normalizeApodCache(JSON.parse(raw) as ApodCache);
     return parsed.date === new Date().toISOString().slice(0, 10) ? parsed : null;
   } catch {
     return null;
@@ -79,4 +96,13 @@ export function preloadImage(url: string): Promise<void> {
     img.onerror = () => reject(new Error("Image preload failed"));
     img.src = url;
   });
+}
+
+export function preloadApodMedia(apod: ApodCache): Promise<void> {
+  if (apod.mediaType === "video") {
+    if (apod.mediaUrl) return preloadImage(apod.mediaUrl);
+    return Promise.resolve();
+  }
+
+  return preloadImage(apod.mediaUrl);
 }

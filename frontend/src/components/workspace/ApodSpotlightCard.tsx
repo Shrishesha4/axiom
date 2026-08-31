@@ -19,6 +19,72 @@ function subscribe() {
   return () => {};
 }
 
+function ApodThumbnail({ apod, className }: { apod: ApodCache; className?: string }) {
+  if (apod.mediaType === "video" && apod.videoUrl) {
+    if (apod.mediaUrl) {
+      return (
+        <Image
+          src={apod.mediaUrl}
+          alt={apod.title}
+          fill
+          sizes="(max-width: 640px) 72px, 140px"
+          className={cn("object-cover", className)}
+          draggable={false}
+        />
+      );
+    }
+
+    return (
+      <video
+        src={apod.videoUrl}
+        muted
+        playsInline
+        preload="metadata"
+        aria-label={apod.title}
+        className={cn("h-full w-full object-cover", className)}
+      />
+    );
+  }
+
+  return (
+    <Image
+      src={apod.mediaUrl}
+      alt={apod.title}
+      fill
+      sizes="(max-width: 640px) 72px, 140px"
+      className={cn("object-cover", className)}
+      draggable={false}
+    />
+  );
+}
+
+function ApodExpandedMedia({ apod }: { apod: ApodCache }) {
+  if (apod.mediaType === "video" && apod.videoUrl) {
+    return (
+      <video
+        src={apod.videoUrl}
+        poster={apod.mediaUrl || undefined}
+        controls
+        autoPlay
+        playsInline
+        className="h-auto max-h-[min(68vh,720px)] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/10"
+      />
+    );
+  }
+
+  return (
+    <Image
+      src={apod.mediaUrl}
+      alt={apod.title}
+      width={1600}
+      height={900}
+      sizes="(max-width: 768px) 100vw, 80vw"
+      className="h-auto max-h-[min(68vh,720px)] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/10"
+      priority
+    />
+  );
+}
+
 export function ApodSpotlightCard({
   apod,
   mediaWidth,
@@ -27,6 +93,7 @@ export function ApodSpotlightCard({
 }: ApodSpotlightCardProps) {
   const [open, setOpen] = useState(false);
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
+  const mediaLabel = apod.mediaType === "video" ? "video" : "image";
 
   useEffect(() => {
     if (!open) return;
@@ -57,19 +124,12 @@ export function ApodSpotlightCard({
         >
           <button
             type="button"
-            aria-label={`View NASA image: ${apod.title}`}
+            aria-label={`View NASA ${mediaLabel}: ${apod.title}`}
             aria-expanded={open}
             className="relative h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             onClick={() => setOpen(true)}
           >
-            <Image
-              src={apod.mediaUrl}
-              alt={apod.title}
-              fill
-              sizes="(max-width: 640px) 72px, 140px"
-              className="object-cover"
-              draggable={false}
-            />
+            <ApodThumbnail apod={apod} />
           </button>
         </motion.div>
 
@@ -94,7 +154,7 @@ export function ApodSpotlightCard({
                 <button
                   type="button"
                   className="absolute inset-0 bg-black/60 backdrop-blur-[3px]"
-                  aria-label="Close image preview"
+                  aria-label={`Close ${mediaLabel} preview`}
                   onClick={() => setOpen(false)}
                 />
 
@@ -116,15 +176,7 @@ export function ApodSpotlightCard({
                   exit={{ opacity: 0, scale: 0.97, y: 10 }}
                   transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <Image
-                    src={apod.mediaUrl}
-                    alt={apod.title}
-                    width={1600}
-                    height={900}
-                    sizes="(max-width: 768px) 100vw, 80vw"
-                    className="h-auto max-h-[min(68vh,720px)] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/10"
-                    priority
-                  />
+                  <ApodExpandedMedia apod={apod} />
 
                   <div className="max-w-2xl space-y-2 px-2 text-white">
                     <p className="text-lg font-medium sm:text-xl">{apod.title}</p>

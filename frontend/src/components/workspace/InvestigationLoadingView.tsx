@@ -7,7 +7,7 @@ import {
   fetchApod,
   pickFact,
   pickTip,
-  preloadImage,
+  preloadApodMedia,
   readCachedApod,
   type ApodCache,
 } from "@/lib/loading-content";
@@ -44,7 +44,7 @@ export function InvestigationLoadingView({
     const cached = readCachedApod();
 
     if (cached) {
-      preloadImage(cached.mediaUrl)
+      preloadApodMedia(cached)
         .then(() => {
           if (!cancelled) setImageReady(true);
         })
@@ -60,8 +60,13 @@ export function InvestigationLoadingView({
 
         setApod(content);
 
-        if (!cached || cached.mediaUrl !== content.mediaUrl) {
-          await preloadImage(content.mediaUrl);
+        if (
+          !cached ||
+          cached.mediaUrl !== content.mediaUrl ||
+          cached.videoUrl !== content.videoUrl ||
+          cached.mediaType !== content.mediaType
+        ) {
+          await preloadApodMedia(content);
         }
         if (!cancelled) setImageReady(true);
       } catch {
