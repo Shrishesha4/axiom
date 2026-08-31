@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator
 
@@ -11,7 +13,7 @@ from agent.prompts import (
     BULL_PROMPT,
     FOLLOWUP_CONTEXT_PROMPT,
     FOLLOWUP_LIVE_PROMPT,
-    INVESTIGATION_PROMPT,
+    INVESTIGATION_SYNTHESIS_PROMPT,
     SIGNAL_EXPLAIN_PROMPT,
     SYNTHESIS_PROMPT,
     SYSTEM_PROMPT,
@@ -19,6 +21,7 @@ from agent.prompts import (
 from auth import record_token_usage
 from agent.openrouter_client import get_openrouter_client, openrouter_request_extras
 from config import get_settings
+from database import SessionLocal
 from models.models import AgentTrace, Investigation, User
 from serialization import serialize_utc
 from services.live_data import infer_condition
@@ -45,8 +48,23 @@ from tools.registry import (
 )
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 12
+
+
+@dataclass(frozen=True)
+class ToolJob:
+    tool_name: str
+    arguments: dict
+    call_id: str
+
+
+def _store_tool_result(collected: dict[str, Any], tool_name: str, result: Any) -> None:
+    if tool_name in collected:
+        collected[tool_name] = _merge_tool_results(tool_name, collected[tool_name], result)
+    else:
+        collected[tool_name] = result
 
 
 def _landscape_trial_count(landscape: Any) -> int:
@@ -122,21 +140,24 @@ def _trace_event(step: str, status: str, message: str) -> dict:
 
 
 def _persist_trace(
-    db: Session,
     investigation_id: int,
     step: str,
     message: str,
     status: str,
 ) -> None:
-    db.add(
-        AgentTrace(
-            investigation_id=investigation_id,
-            step=step,
-            message=message,
-            status=status,
+    session = SessionLocal()
+    try:
+        session.add(
+            AgentTrace(
+                investigation_id=investigation_id,
+                step=step,
+                message=message,
+                status=status,
+            )
         )
-    )
-    db.commit()
+        session.commit()
+    finally:
+        session.close()
 
 
 def _usage_tokens(response) -> int:
@@ -144,6 +165,198 @@ def _usage_tokens(response) -> int:
     if usage:
         return int(getattr(usage, "total_tokens", 0) or 0)
     return 0
+
+
+async def _run_tools_parallel(
+    investigation_id: int,
+    query: str,
+    jobs: list[ToolJob],
+    collected: dict[str, Any] | None = None,
+    *,
+    persist: bool = True,
+) -> AsyncGenerator[dict, None]:
+    """Execute independent tools concurrently and stream trace events as each finishes."""
+    if not jobs:
+        return
+
+    for job in jobs:
+        yield _trace_event(
+            job.tool_name,
+            "running",
+            TRACE_LABELS.get(job.tool_name, job.tool_name),
+        )
+
+    if len(jobs) == 1:
+        job = jobs[0]
+        result = await asyncio.to_thread(
+            execute_tool,
+            investigation_id,
+            query,
+            job.tool_name,
+            job.arguments,
+        )
+        if collected is not None:
+            _store_tool_result(collected, job.tool_name, result)
+        complete_msg = describe_tool_result(job.tool_name, result)
+        if persist:
+            _persist_trace(investigation_id, job.tool_name, complete_msg, "complete")
+        yield _trace_event(job.tool_name, "complete", complete_msg)
+        yield {"type": "tool_done", "job": job, "result": result}
+        return
+
+    async def run_job(job: ToolJob) -> tuple[ToolJob, Any, str]:
+        result = await asyncio.to_thread(
+            execute_tool,
+            investigation_id,
+            query,
+            job.tool_name,
+            job.arguments,
+        )
+        complete_msg = describe_tool_result(job.tool_name, result)
+        if persist:
+            await asyncio.to_thread(
+                _persist_trace,
+                investigation_id,
+                job.tool_name,
+                complete_msg,
+                "complete",
+            )
+        return job, result, complete_msg
+
+    tasks = {asyncio.create_task(run_job(job)): job for job in jobs}
+    finished: dict[str, tuple[ToolJob, Any, str]] = {}
+
+    while tasks:
+        done, _ = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            tasks.pop(task)
+            job, result, complete_msg = await task
+            finished[job.call_id] = (job, result, complete_msg)
+            if collected is not None:
+                _store_tool_result(collected, job.tool_name, result)
+            yield _trace_event(job.tool_name, "complete", complete_msg)
+
+    for job in jobs:
+        done_job, result, _ = finished[job.call_id]
+        yield {"type": "tool_done", "job": done_job, "result": result}
+
+
+async def _synthesize_investigation_narrative(
+    db: Session,
+    investigation: Investigation,
+    user: User,
+    collected: dict[str, Any],
+) -> str | None:
+    if not settings.openrouter_api_key:
+        return None
+
+    context = json.dumps(
+        {key: value for key, value in collected.items() if not key.startswith("_")},
+        default=str,
+    )[:12000]
+    prompt = INVESTIGATION_SYNTHESIS_PROMPT.format(
+        query=investigation.query,
+        context=context,
+    )
+    client = get_openrouter_client()
+    try:
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.openrouter_model,
+            messages=[
+                {"role": "system", "content": _system_prompt()},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception as exc:
+        logger.warning("Investigation synthesis failed: %s", exc)
+        return None
+
+    record_token_usage(db, user, _usage_tokens(response))
+    content = response.choices[0].message.content
+    return content.strip() if content else None
+
+
+async def _parallel_investigation_gather(
+    db: Session,
+    investigation: Investigation,
+    user: User,
+) -> AsyncGenerator[dict, None]:
+    """Gather investigation data with parallel tool waves instead of sequential LLM rounds."""
+    collected: dict[str, Any] = {}
+    condition = infer_condition(investigation.query)
+
+    yield _trace_event("understand", "running", "Understanding question")
+    await asyncio.sleep(0)
+    _persist_trace(investigation.id, "understand", "Understanding question", "complete")
+    yield _trace_event("understand", "complete", "Understanding question")
+
+    if settings.openrouter_web_search_enabled:
+        yield _trace_event("web_search", "running", "Grounding with OpenRouter web search")
+        _persist_trace(
+            investigation.id,
+            "web_search",
+            "Searched the web",
+            "complete",
+        )
+        yield _trace_event("web_search", "complete", "Searched the web")
+
+    wave_one = [
+        ToolJob("search_trials", {"condition": condition}, "search_trials"),
+        ToolJob(
+            "get_therapy_landscape",
+            {"condition": condition},
+            "get_therapy_landscape",
+        ),
+        ToolJob(
+            "rank_therapies_by_momentum",
+            {"condition": condition, "limit": 10},
+            "rank_therapies_by_momentum",
+        ),
+        ToolJob(
+            "get_competitive_matrix",
+            {"condition": condition},
+            "get_competitive_matrix",
+        ),
+        ToolJob(
+            "get_whitespace_opportunities",
+            {"condition": condition, "limit": 5},
+            "get_whitespace_opportunities",
+        ),
+    ]
+
+    async for event in _run_tools_parallel(
+        investigation.id, investigation.query, wave_one, collected
+    ):
+        if event.get("type") == "tool_done":
+            continue
+        yield event
+
+    rankings = collected.get("rank_therapies_by_momentum") or []
+    top_therapy = rankings[0].get("name") if rankings else None
+    if top_therapy:
+        wave_two = [
+            ToolJob(
+                "get_publications",
+                {"therapy_name": top_therapy, "condition": condition},
+                "get_publications",
+            ),
+            ToolJob(
+                "get_safety_profile",
+                {"therapy_name": top_therapy},
+                "get_safety_profile",
+            ),
+        ]
+        async for event in _run_tools_parallel(
+            investigation.id, investigation.query, wave_two, collected
+        ):
+            if event.get("type") == "tool_done":
+                continue
+            yield event
+
+    synthesis = await _synthesize_investigation_narrative(db, investigation, user, collected)
+    collected["_synthesis"] = synthesis
+    yield {"type": "collected", "data": collected}
 
 
 async def _agent_tool_loop(
@@ -166,13 +379,12 @@ async def _agent_tool_loop(
 
     yield _trace_event("understand", "running", "Understanding question")
     await asyncio.sleep(0.3)
-    _persist_trace(db, investigation.id, "understand", "Understanding question", "complete")
+    _persist_trace(investigation.id, "understand", "Understanding question", "complete")
     yield _trace_event("understand", "complete", "Understanding question")
 
     if settings.openrouter_web_search_enabled:
         yield _trace_event("web_search", "running", "Grounding with OpenRouter web search")
         _persist_trace(
-            db,
             investigation.id,
             "web_search",
             "Searched the web",
@@ -214,41 +426,31 @@ async def _agent_tool_loop(
                 }
             )
 
+            tool_jobs = []
             for tc in message.tool_calls:
                 tool_name = tc.function.name
                 arguments = parse_tool_arguments(tc.function.arguments)
-
-                yield _trace_event(
-                    tool_name,
-                    "running",
-                    TRACE_LABELS.get(tool_name, tool_name),
+                tool_jobs.append(
+                    ToolJob(tool_name, arguments, tc.id or tool_name)
                 )
 
-                result = await asyncio.to_thread(
-                    execute_tool,
-                    investigation.id,
-                    investigation.query,
-                    tool_name,
-                    arguments,
-                )
-                if tool_name in collected:
-                    collected[tool_name] = _merge_tool_results(
-                        tool_name, collected[tool_name], result
+            async for event in _run_tools_parallel(
+                investigation.id,
+                investigation.query,
+                tool_jobs,
+                collected,
+            ):
+                if event.get("type") == "tool_done":
+                    done = event
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": done["job"].call_id,
+                            "content": json.dumps(done["result"], default=str),
+                        }
                     )
-                else:
-                    collected[tool_name] = result
-
-                complete_msg = describe_tool_result(tool_name, result)
-                _persist_trace(db, investigation.id, tool_name, complete_msg, "complete")
-                yield _trace_event(tool_name, "complete", complete_msg)
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, default=str),
-                    }
-                )
+                    continue
+                yield event
             continue
 
         if message.content:
@@ -271,31 +473,34 @@ async def _fallback_tool_sequence(
 
     yield _trace_event("understand", "running", "Understanding question")
     await asyncio.sleep(0.4)
-    _persist_trace(db, investigation.id, "understand", "Understanding question", "complete")
+    _persist_trace(investigation.id, "understand", "Understanding question", "complete")
     yield _trace_event("understand", "complete", "Understanding question")
 
-    fallback_tools = [
-        ("search_trials", {"condition": condition}),
-        ("get_therapy_landscape", {"condition": condition}),
-        ("rank_therapies_by_momentum", {"condition": condition, "limit": 10}),
-        ("get_competitive_matrix", {"condition": condition}),
+    fallback_jobs = [
+        ToolJob("search_trials", {"condition": condition}, "search_trials"),
+        ToolJob(
+            "get_therapy_landscape",
+            {"condition": condition},
+            "get_therapy_landscape",
+        ),
+        ToolJob(
+            "rank_therapies_by_momentum",
+            {"condition": condition, "limit": 10},
+            "rank_therapies_by_momentum",
+        ),
+        ToolJob(
+            "get_competitive_matrix",
+            {"condition": condition},
+            "get_competitive_matrix",
+        ),
     ]
 
-    for tool_name, arguments in fallback_tools:
-        yield _trace_event(tool_name, "running", TRACE_LABELS.get(tool_name, tool_name))
-
-        result = await asyncio.to_thread(
-            execute_tool,
-            investigation.id,
-            investigation.query,
-            tool_name,
-            arguments,
-        )
-        collected[tool_name] = result
-
-        complete_msg = describe_tool_result(tool_name, result)
-        _persist_trace(db, investigation.id, tool_name, complete_msg, "complete")
-        yield _trace_event(tool_name, "complete", complete_msg)
+    async for event in _run_tools_parallel(
+        investigation.id, investigation.query, fallback_jobs, collected
+    ):
+        if event.get("type") == "tool_done":
+            continue
+        yield event
 
     yield {"type": "collected", "data": collected}
 
@@ -391,14 +596,8 @@ async def run_investigation(
     collected: dict[str, Any] = {}
     synthesis: str | None = None
 
-    investigation_tools = [
-        t for t in TOOL_DEFINITIONS
-        if t["function"]["name"] != "generate_executive_briefing"
-    ]
-
     if settings.openrouter_api_key:
-        prompt = INVESTIGATION_PROMPT.format(query=investigation.query)
-        async for event in _agent_tool_loop(db, investigation, user, prompt, investigation_tools):
+        async for event in _parallel_investigation_gather(db, investigation, user):
             if event.get("type") == "collected":
                 collected = event["data"]
                 synthesis = collected.pop("_synthesis", None)
@@ -411,14 +610,40 @@ async def run_investigation(
             else:
                 yield event
 
-    yield _trace_event("synthesize", "running", "Thinking about the question")
-    await asyncio.sleep(0.4)
+    yield _trace_event("synthesize", "running", "Synthesizing intelligence report")
+    await asyncio.sleep(0)
 
     summary = _assemble_investigation_summary(
         investigation.id, investigation.query, collected, synthesis
     )
 
-    _persist_trace(db, investigation.id, "synthesize", "Intelligence report ready", "complete")
+    signal_count = len(summary.get("signals") or [])
+    yield _trace_event(
+        "synthesize_signals",
+        "complete",
+        f"Generated {signal_count} intelligence signal{'s' if signal_count != 1 else ''}",
+    )
+    await asyncio.sleep(0)
+
+    ranking_count = len(summary.get("rankings") or [])
+    if ranking_count:
+        top = summary["rankings"][0].get("name", "top therapy")
+        yield _trace_event(
+            "synthesize_rankings",
+            "complete",
+            f"Ranked {ranking_count} therapies — lead: {top}",
+        )
+        await asyncio.sleep(0)
+
+    trial_count = summary.get("landscape", {}).get("total_trials", 0)
+    yield _trace_event(
+        "synthesize_landscape",
+        "complete",
+        f"Mapped landscape across {trial_count} live trials",
+    )
+    await asyncio.sleep(0)
+
+    _persist_trace(investigation.id, "synthesize", "Intelligence report ready", "complete")
     yield _trace_event("synthesize", "complete", "Intelligence report ready")
 
     inv = db.query(Investigation).filter(Investigation.id == investigation.id).first()
@@ -635,37 +860,39 @@ async def ask_followup(
                 }
             )
 
-            for tc in tool_calls:
-                tool_name = tc["function"]["name"]
-                arguments = parse_tool_arguments(tc["function"]["arguments"])
-                label = TRACE_LABELS.get(tool_name, tool_name)
-                yield {
-                    "type": "tool",
-                    "step": tool_name,
-                    "status": "running",
-                    "message": label,
-                }
-                result = await asyncio.to_thread(
-                    execute_tool,
-                    investigation_id,
-                    inv.query,
-                    tool_name,
-                    arguments,
+            tool_jobs = [
+                ToolJob(
+                    tc["function"]["name"],
+                    parse_tool_arguments(tc["function"]["arguments"]),
+                    tc["id"] or tc["function"]["name"],
                 )
-                complete_msg = describe_tool_result(tool_name, result)
-                yield {
-                    "type": "tool",
-                    "step": tool_name,
-                    "status": "complete",
-                    "message": complete_msg,
-                }
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": json.dumps(result, default=str),
+                for tc in tool_calls
+            ]
+
+            async for event in _run_tools_parallel(
+                investigation_id,
+                inv.query,
+                tool_jobs,
+                persist=False,
+            ):
+                if event.get("type") == "tool_done":
+                    done = event
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": done["job"].call_id,
+                            "content": json.dumps(done["result"], default=str),
+                        }
+                    )
+                    continue
+
+                if event.get("type") == "trace":
+                    yield {
+                        "type": "tool",
+                        "step": event["step"],
+                        "status": event["status"],
+                        "message": event["message"],
                     }
-                )
             continue
 
         return

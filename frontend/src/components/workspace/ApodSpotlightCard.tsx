@@ -41,10 +41,9 @@ export function ApodSpotlightCard({
     <>
       <div
         className={cn(
-          "pointer-events-auto flex cursor-zoom-in flex-row items-center justify-center text-2xl font-light text-foreground sm:text-4xl",
+          "pointer-events-auto flex flex-row items-center justify-center text-2xl font-light text-foreground sm:text-4xl",
           className
         )}
-        onPointerEnter={() => setOpen(true)}
       >
         <span className="pointer-events-none text-right">Today&apos;s</span>
 
@@ -58,9 +57,10 @@ export function ApodSpotlightCard({
         >
           <button
             type="button"
-            aria-label={`Expand NASA image: ${apod.title}`}
-            className="relative h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            onClick={() => setOpen((value) => !value)}
+            aria-label={`View NASA image: ${apod.title}`}
+            aria-expanded={open}
+            className="relative h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            onClick={() => setOpen(true)}
           >
             <Image
               src={apod.mediaUrl}
@@ -87,7 +87,6 @@ export function ApodSpotlightCard({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                onPointerLeave={() => setOpen(false)}
                 role="dialog"
                 aria-modal
                 aria-label={apod.title}

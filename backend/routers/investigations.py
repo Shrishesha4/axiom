@@ -239,8 +239,11 @@ async def stream_investigation(
     async def event_generator():
         import json
 
-        async for event in run_investigation(db, inv, user):
-            yield f"data: {json.dumps(event)}\n\n"
+        try:
+            async for event in run_investigation(db, inv, user):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
     return StreamingResponse(
         event_generator(),

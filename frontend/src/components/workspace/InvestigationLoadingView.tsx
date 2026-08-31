@@ -11,7 +11,7 @@ import {
   readCachedApod,
   type ApodCache,
 } from "@/lib/loading-content";
-import { Spinner } from "@/components/ui/spinner";
+import { AgentThinkingFeed, type ThinkingStep } from "@/components/agent/AgentThinkingFeed";
 import { cn } from "@/lib/utils";
 
 function truncate(text: string, max = 200) {
@@ -21,11 +21,15 @@ function truncate(text: string, max = 200) {
 
 interface InvestigationLoadingViewProps {
   investigationId?: number;
+  traceSteps?: ThinkingStep[];
+  isRunning?: boolean;
   className?: string;
 }
 
 export function InvestigationLoadingView({
   investigationId,
+  traceSteps = [],
+  isRunning = true,
   className,
 }: InvestigationLoadingViewProps) {
   const screenSize = useScreenSize();
@@ -79,10 +83,11 @@ export function InvestigationLoadingView({
         className
       )}
     >
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Spinner className="h-3.5 w-3.5 text-primary" />
-        <span>Thinking about the question…</span>
-      </div>
+      <AgentThinkingFeed
+        steps={traceSteps}
+        isRunning={isRunning}
+        className="mb-1"
+      />
 
       <div className="max-w-md rounded-xl border border-primary/20 bg-primary/5 px-5 py-4">
         <p className="text-[10px] uppercase tracking-widest text-primary">While you wait</p>

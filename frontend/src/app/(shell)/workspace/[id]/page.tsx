@@ -321,7 +321,13 @@ export default function WorkspacePage() {
   const mainPanel = useMemo(
     () => (
       <div className="p-6">
-        {isRunning && !summary && <InvestigationLoadingView investigationId={id} />}
+        {isRunning && !summary && (
+          <InvestigationLoadingView
+            investigationId={id}
+            traceSteps={traceSteps}
+            isRunning={isRunning}
+          />
+        )}
 
         {summary && (
           <InvestigationDashboard
@@ -343,7 +349,7 @@ export default function WorkspacePage() {
         )}
       </div>
     ),
-    [id, isRunning, summary, query, highlightMechanism, handleDraftMemo, inlineDebate, debateLoading, inlineLeadMemo, leadMemoLoading, handleDebate]
+    [id, isRunning, summary, query, highlightMechanism, handleDraftMemo, inlineDebate, debateLoading, inlineLeadMemo, leadMemoLoading, handleDebate, traceSteps]
   );
 
   const agentPanel = useMemo(

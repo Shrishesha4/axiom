@@ -103,3 +103,14 @@ Optionally call get_publications or get_safety_profile for top therapies if rele
 After tool results are available, write 2-3 sentences summarizing key findings tailored to the user's specific question (not a generic template).
 Reference the condition, dominant mechanisms, and lead therapies from tool outputs.
 Plain text only. No markdown. Use only numbers from tool outputs. Cite therapy names and NCT IDs where available."""
+
+INVESTIGATION_SYNTHESIS_PROMPT = """You already have live tool results for this investigation.
+
+Query: "{query}"
+
+Tool results (JSON):
+{context}
+
+Write 2-3 sentences summarizing key findings tailored to the user's specific question (not a generic template).
+Reference the condition, dominant mechanisms, and lead therapies from the results.
+Plain text only. No markdown. Use only numbers from the results. Cite therapy names and NCT IDs where available."""
