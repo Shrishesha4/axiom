@@ -320,7 +320,7 @@ export default function WorkspacePage() {
 
   const mainPanel = useMemo(
     () => (
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {isRunning && !summary && (
           <InvestigationLoadingView
             investigationId={id}
@@ -355,22 +355,22 @@ export default function WorkspacePage() {
   const agentPanel = useMemo(
     () => (
       <>
-        <div className="flex shrink-0 items-center justify-between rounded-t-xl px-4 pb-3 pt-3">
+        <div className="flex shrink-0 items-center justify-between gap-2 rounded-t-xl px-3 pb-2 pt-2 sm:px-4 sm:pb-3 sm:pt-3">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Agent</p>
           {!isRunning && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <Button variant="outline" size="xs" onClick={handleBriefing}>
                 <FileText className="h-3.5 w-3.5" />
-                Briefing
+                <span className="hidden sm:inline">Briefing</span>
               </Button>
               <Button variant="outline" size="xs" onClick={handleDebate}>
                 <Swords className="h-3.5 w-3.5" />
-                Debate
+                <span className="hidden sm:inline">Debate</span>
               </Button>
             </div>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4">
+        <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3 sm:px-4 sm:pb-4">
           <AgentPanel
             investigationId={id}
             signals={summary?.signals || []}

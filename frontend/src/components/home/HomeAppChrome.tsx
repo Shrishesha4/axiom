@@ -16,11 +16,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SidebarHistoryFlyout } from "@/components/home/SidebarHistoryFlyout";
+import { MobileNavMenu } from "@/components/home/MobileNavMenu";
 import { ShellMainHeaderProvider } from "@/components/home/ShellMainHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { UserMenu } from "@/components/user/UserMenu";
 import { Button } from "@/components/ui/button";
 import { RetroDitherLayout } from "@/components/canvasui/RetroDitherLayout";
+import useScreenSize from "@/hooks/use-screen-size";
 import { type Investigation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -35,14 +37,13 @@ const slideTransition = {
   mass: 0.85,
 };
 
-/** Flat chrome — only the main sheet is a rounded card */
 const chromeShell =
   "flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#f5f6f6]";
 
 const chromeBar = "bg-[#f5f6f6]";
 
 const mainSheet =
-  "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/40 shadow-sm";
+  "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/40 shadow-sm sm:rounded-2xl";
 
 interface HomeAppChromeProps {
   recent: Investigation[];
@@ -146,6 +147,61 @@ function SidebarNavLink({
   );
 }
 
+function SidebarNavContent({
+  navItems,
+  pathname,
+  expanded,
+  recent,
+  activeInvestigationId,
+}: {
+  navItems: NavItem[];
+  pathname: string;
+  expanded: boolean;
+  recent: Investigation[];
+  activeInvestigationId?: number;
+}) {
+  if (expanded) {
+    return (
+      <div className="flex h-full min-h-0 w-[260px] flex-col">
+        <nav className="shrink-0 space-y-1 px-3 pb-3 pt-3">
+          {navItems.map((item) => (
+            <SidebarNavLink
+              key={item.href}
+              item={item}
+              expanded
+              active={item.isActive(pathname)}
+            />
+          ))}
+          <SidebarHistoryFlyout
+            recent={recent}
+            expanded
+            activeInvestigationId={activeInvestigationId}
+          />
+        </nav>
+        <div className="min-h-0 flex-1" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-[56px] flex-col items-center gap-1.5 py-3">
+      {navItems.map((item) => (
+        <SidebarNavLink
+          key={item.href}
+          item={item}
+          expanded={false}
+          active={item.isActive(pathname)}
+        />
+      ))}
+      <SidebarHistoryFlyout
+        recent={recent}
+        expanded={false}
+        activeInvestigationId={activeInvestigationId}
+      />
+    </div>
+  );
+}
+
 function readSidebarExpanded(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -159,6 +215,8 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const { lessThan } = useScreenSize();
+  const isMobile = lessThan("md");
   const [expanded, setExpanded] = useState(false);
   const [animateLayout, setAnimateLayout] = useState(false);
   const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === "admin");
@@ -187,7 +245,7 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
     });
   }, []);
 
-  const sidebarWidth = expanded ? SIDEBAR_OPEN : SIDEBAR_RAIL;
+  const sidebarWidth = isMobile ? 0 : expanded ? SIDEBAR_OPEN : SIDEBAR_RAIL;
   const layoutTransition = animateLayout ? slideTransition : { duration: 0 };
   const showBack = pathname !== "/";
 
@@ -198,7 +256,7 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
       <div className={chromeShell}>
         <header
           className={cn(
-            "flex shrink-0 items-center justify-between px-4 pb-2 pt-3 sm:px-6 sm:pt-3.5",
+            "flex shrink-0 items-center justify-between px-3 pb-2 pt-2.5 sm:px-6 sm:pt-3.5",
             chromeBar,
           )}
         >
@@ -212,54 +270,24 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
         </header>
 
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <motion.aside
-            initial={false}
-            animate={{ width: sidebarWidth }}
-            transition={layoutTransition}
-            className={cn("shrink-0 overflow-hidden", chromeBar)}
-          >
-            {expanded ? (
-              <div className="flex h-full min-h-0 w-[260px] flex-col">
-                <nav className="shrink-0 space-y-1 px-3 pb-3 pt-3">
-                  <p className="mb-2 px-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                    Navigate
-                  </p>
-                  {navItems.map((item) => (
-                    <SidebarNavLink
-                      key={item.href}
-                      item={item}
-                      expanded
-                      active={item.isActive(pathname)}
-                    />
-                  ))}
-                  <SidebarHistoryFlyout
-                    recent={recent}
-                    expanded
-                    activeInvestigationId={activeInvestigationId}
-                  />
-                </nav>
-                <div className="min-h-0 flex-1" />
-              </div>
-            ) : (
-              <div className="flex w-[56px] flex-col items-center gap-1.5 py-3">
-                {navItems.map((item) => (
-                  <SidebarNavLink
-                    key={item.href}
-                    item={item}
-                    expanded={false}
-                    active={item.isActive(pathname)}
-                  />
-                ))}
-                <SidebarHistoryFlyout
-                  recent={recent}
-                  expanded={false}
-                  activeInvestigationId={activeInvestigationId}
-                />
-              </div>
-            )}
-          </motion.aside>
+          {!isMobile ? (
+            <motion.aside
+              initial={false}
+              animate={{ width: sidebarWidth }}
+              transition={layoutTransition}
+              className={cn("shrink-0 overflow-hidden", chromeBar)}
+            >
+              <SidebarNavContent
+                navItems={navItems}
+                pathname={pathname}
+                expanded={expanded}
+                recent={recent}
+                activeInvestigationId={activeInvestigationId}
+              />
+            </motion.aside>
+          ) : null}
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col p-1 sm:p-2">
             <ShellMainHeaderProvider>
               {(header) => (
                 <div className={mainSheet}>
@@ -268,17 +296,26 @@ export function HomeAppChrome({ recent, children }: HomeAppChromeProps) {
                     backgroundClassName="bg-white"
                   >
                     <div className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden">
-                      <div className="flex shrink-0 items-center gap-1 px-2 py-1.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={toggleSidebar}
-                          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
-                          className="h-7 w-7 shrink-0 rounded-lg p-0 opacity-70 transition-all hover:bg-black/[0.05] hover:opacity-100"
-                        >
-                          <PanelLeft className="h-4 w-4" />
-                        </Button>
+                      <div className="flex shrink-0 items-center gap-1 px-1.5 py-1.5 sm:px-2">
+                        {isMobile ? (
+                          <MobileNavMenu
+                            navItems={navItems}
+                            pathname={pathname}
+                            recent={recent}
+                            activeInvestigationId={activeInvestigationId}
+                          />
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={toggleSidebar}
+                            title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+                            className="h-7 w-7 shrink-0 rounded-lg p-0 opacity-70 transition-all hover:bg-black/[0.05] hover:opacity-100"
+                          >
+                            <PanelLeft className="h-4 w-4" />
+                          </Button>
+                        )}
                         {showBack && (
                           <Button
                             type="button"

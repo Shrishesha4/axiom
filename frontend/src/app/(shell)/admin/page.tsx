@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -115,7 +116,7 @@ export default function AdminPage() {
 
   return (
     <ScrollContainer className="h-full">
-      <div className="mx-auto max-w-6xl px-6 py-10">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
@@ -142,7 +143,131 @@ export default function AdminPage() {
             <Spinner className="h-8 w-8 text-primary" />
           </div>
         ) : (
-          <div className="mt-8 overflow-hidden rounded-2xl border border-border/50 bg-white">
+          <>
+            <div className="mt-8 space-y-3 md:hidden">
+              {filteredUsers.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  No users match your search.
+                </p>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isSelf = u.id === user.id;
+                  const isAdmin = u.role === "admin";
+                  const busy = savingId === u.id || blockingId === u.id;
+
+                  return (
+                    <div
+                      key={u.id}
+                      className={cn(
+                        "rounded-2xl border border-border/50 bg-white p-4",
+                        !u.is_active && "opacity-60",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <UserAvatar user={u} size="sm" className="ring-1 ring-border/40" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{u.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant={isAdmin ? "default" : "outline"} className="capitalize">
+                              {u.role}
+                            </Badge>
+                            <Badge
+                              variant={u.is_active ? "outline" : "destructive"}
+                              className={
+                                u.is_active
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : undefined
+                              }
+                            >
+                              {u.is_active ? "Active" : "Blocked"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <p className="font-mono text-xs">
+                          {u.tokens_used.toLocaleString()} / {u.token_limit.toLocaleString()} tokens
+                        </p>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${usagePercent(u)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {!isAdmin ? (
+                        <div className="mt-4">
+                          <Input
+                            type="number"
+                            className="h-9 w-full rounded-lg bg-[#f5f6f6] px-2"
+                            value={limits[u.id] ?? u.token_limit}
+                            onChange={(e) =>
+                              setLimits((prev) => ({ ...prev, [u.id]: e.target.value }))
+                            }
+                            min={1000}
+                            disabled={busy}
+                            aria-label={`Token limit for ${u.name}`}
+                          />
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {!isAdmin && (
+                          <>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              className="rounded-lg"
+                              disabled={busy}
+                              onClick={() => updateLimit(u.id)}
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                              Save
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              className="rounded-lg"
+                              disabled={busy}
+                              onClick={() => resetUsage(u.id)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Reset
+                            </Button>
+                          </>
+                        )}
+                        {!isSelf && (
+                          <Button
+                            size="xs"
+                            variant={u.is_active ? "destructive" : "outline"}
+                            className="rounded-lg"
+                            disabled={busy}
+                            onClick={() => toggleBlock(u)}
+                          >
+                            {u.is_active ? (
+                              <>
+                                <Ban className="h-3.5 w-3.5" />
+                                Block
+                              </>
+                            ) : (
+                              <>
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                Unblock
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="mt-8 hidden overflow-hidden rounded-2xl border border-border/50 bg-white md:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -283,6 +408,7 @@ export default function AdminPage() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </div>
     </ScrollContainer>

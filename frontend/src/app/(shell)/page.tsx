@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search, Sparkles } from "lucide-react";
+import { ArrowRight, Loader2, Search, Sparkles } from "lucide-react";
 import { SessionLibrarySection } from "@/components/home/SessionLibrary";
 import { useChromeRecent } from "@/components/home/ChromeRecentProvider";
 import { ScrollContainer } from "@/components/ScrollContainer";
@@ -105,18 +105,15 @@ export default function CommandCenter() {
 
   return (
     <ScrollContainer className="h-full">
-      <div className="mx-auto max-w-3xl px-6 py-12">
-        <div className="mb-10">
-          <p className="mb-1 text-sm font-medium text-primary">{greeting(user.name)}</p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mb-8 sm:mb-10">
+          <p className="text-xl font-medium text-primary">{greeting(user.name)}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             What would you like to investigate?
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Ask about any therapeutic area. Live data from ClinicalTrials.gov, openFDA, and PubMed.
-          </p>
         </div>
 
-        <div className="relative mb-12">
+        <div className="relative mb-8 sm:mb-12">
           <Search className="absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <Input
             id="search-input"
@@ -125,16 +122,22 @@ export default function CommandCenter() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && startInvestigation(query)}
             placeholder="e.g. Phase III trials for Alzheimer's disease..."
-            className="h-auto w-full rounded-2xl border-border/60 bg-[#f5f6f6] py-6 pl-12 pr-36 text-base shadow-none"
+            className="h-auto w-full rounded-2xl border-border/60 bg-[#f5f6f6] py-4 pl-12 pr-14 text-base shadow-none sm:py-6 sm:pr-28"
           />
-          <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
-            <Kbd>⌘K</Kbd>
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2 sm:right-3">
+            <Kbd className="hidden sm:inline-flex">⌘K</Kbd>
             <Button
               onClick={() => startInvestigation(query)}
               disabled={loading || !query.trim()}
-              size="sm"
+              size="icon-sm"
+              className="h-9 w-9 shrink-0 rounded-xl"
+              aria-label={loading ? "Starting investigation" : "Investigate"}
             >
-              {loading ? "Starting..." : "Investigate"}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>

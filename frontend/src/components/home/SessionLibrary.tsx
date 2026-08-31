@@ -45,7 +45,7 @@ function SessionCardMenu({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="rounded-full opacity-0 transition-opacity group-hover:opacity-100 data-[open=true]:opacity-100"
+        className="rounded-full opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 data-[open=true]:opacity-100"
         data-open={menuOpenId === session.id}
         onClick={(e) => {
           e.stopPropagation();
@@ -160,31 +160,37 @@ export function SessionLibrary({ limit }: { limit?: number }) {
   return (
     <>
       <div className={limit ? undefined : "max-h-[520px] overflow-y-auto pr-1"}>
-        <div ref={gridRef} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div ref={gridRef} className="grid gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {sessions.map((session) => (
             <Card
               key={session.id}
               data-session-card
               data-session-id={session.id}
-              className="group relative flex h-full cursor-pointer flex-col rounded-2xl border-border/50 bg-[#f5f6f6] shadow-none transition-all hover:border-primary/40 hover:bg-[#eef0f0] hover:shadow-sm"
+              className="group relative flex h-full cursor-pointer flex-col rounded-xl border-border/50 bg-[#f5f6f6] shadow-none transition-all hover:border-primary/40 hover:bg-[#eef0f0] hover:shadow-sm sm:rounded-2xl"
               onClick={() => router.push(`/workspace/${session.id}`)}
             >
-              <CardContent className="flex h-full flex-col p-4">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "rounded-full px-2 py-0 text-[10px] capitalize",
-                      session.status === "complete"
-                        ? "border-primary/30 text-primary"
-                        : "border-border/60",
-                    )}
-                  >
-                    {session.status}
-                  </Badge>
+              <CardContent className="flex h-full flex-col p-3 sm:p-4">
+                <div className="mb-2 flex items-center justify-between gap-2 sm:mb-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full px-2 py-0 text-[10px] capitalize",
+                        session.status === "complete"
+                          ? "border-primary/30 text-primary"
+                          : "border-border/60",
+                      )}
+                    >
+                      {session.status}
+                    </Badge>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground sm:hidden">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {formatRelativeTime(session.created_at)}
+                    </span>
+                  </div>
                   <div
                     data-session-card-actions
-                    className="relative z-10"
+                    className="relative z-10 shrink-0"
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
@@ -199,11 +205,11 @@ export function SessionLibrary({ limit }: { limit?: number }) {
                   </div>
                 </div>
 
-                <p className="line-clamp-3 flex-1 text-sm font-medium leading-snug">
+                <p className="line-clamp-2 text-sm font-medium leading-snug sm:line-clamp-3 sm:flex-1">
                   {session.query}
                 </p>
 
-                <div className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="mt-2 hidden items-center gap-1.5 text-xs text-muted-foreground sm:mt-4 sm:flex">
                   <Clock className="h-3 w-3 shrink-0" />
                   {formatRelativeTime(session.created_at)}
                 </div>
@@ -271,8 +277,8 @@ export function SessionLibrarySection() {
 
   return (
     <section className="mt-4">
-      <Separator className="mb-8 bg-border/50" />
-      <div className="mb-6 flex items-end justify-between gap-4">
+      <Separator className="mb-6 bg-border/50 sm:mb-8" />
+      <div className="mb-4 flex items-end justify-between gap-4 sm:mb-6">
         <div>
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Your library</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight">Previous sessions</h2>

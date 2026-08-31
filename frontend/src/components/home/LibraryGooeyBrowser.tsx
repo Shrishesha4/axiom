@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
@@ -24,6 +24,18 @@ type DayGroup = {
   title: string;
   sessions: Investigation[];
 };
+
+function filterSessions(sessions: Investigation[], search: string): Investigation[] {
+  const query = search.trim().toLowerCase();
+  if (!query) return sessions;
+
+  return sessions.filter(
+    (session) =>
+      session.query.toLowerCase().includes(query) ||
+      session.status.toLowerCase().includes(query) ||
+      String(session.id).includes(query),
+  );
+}
 
 function groupSessionsByDay(sessions: Investigation[]): DayGroup[] {
   const groups = new Map<string, Investigation[]>();
@@ -106,16 +118,21 @@ function SessionRowMenu({
   );
 }
 
-export function LibraryGooeyBrowser() {
+export function LibraryGooeyBrowser({ search = "" }: { search?: string }) {
   const router = useRouter();
   const { recent, recentLoaded } = useChromeRecent();
   const screenSize = useScreenSize();
   const browser = useDetectBrowser();
   const isSafari = browser === "Safari";
-  const groups = useMemo(() => groupSessionsByDay(recent), [recent]);
+  const filtered = useMemo(() => filterSessions(recent, search), [recent, search]);
+  const groups = useMemo(() => groupSessionsByDay(filtered), [filtered]);
   const [activeTab, setActiveTab] = useState(0);
   const currentTab =
     groups.length === 0 ? 0 : Math.min(activeTab, groups.length - 1);
+
+  useEffect(() => {
+    setActiveTab(0);
+  }, [search]);
 
   const actions = useSessionLibraryActions();
 
@@ -131,6 +148,14 @@ export function LibraryGooeyBrowser() {
     return (
       <p className="py-16 text-center text-sm text-muted-foreground">
         No sessions yet. Start an investigation from home.
+      </p>
+    );
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <p className="py-16 text-center text-sm text-muted-foreground">
+        No sessions match your search.
       </p>
     );
   }

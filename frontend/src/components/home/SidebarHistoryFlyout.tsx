@@ -18,12 +18,14 @@ interface SidebarHistoryFlyoutProps {
   recent: Investigation[];
   expanded: boolean;
   activeInvestigationId?: number;
+  hoverEnabled?: boolean;
 }
 
 export function SidebarHistoryFlyout({
   recent,
   expanded,
   activeInvestigationId,
+  hoverEnabled = true,
 }: SidebarHistoryFlyoutProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -53,8 +55,8 @@ export function SidebarHistoryFlyout({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        onMouseEnter={handleOpen}
-        onMouseLeave={scheduleClose}
+        onMouseEnter={hoverEnabled ? handleOpen : undefined}
+        onMouseLeave={hoverEnabled ? scheduleClose : undefined}
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
           "group flex w-full transition-all duration-200 outline-none",
@@ -92,8 +94,8 @@ export function SidebarHistoryFlyout({
         <PopoverPositioner side="right" align="start" sideOffset={10}>
           <PopoverPopup
             className="w-72 overflow-hidden p-0"
-            onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
+            onMouseEnter={hoverEnabled ? cancelClose : undefined}
+            onMouseLeave={hoverEnabled ? scheduleClose : undefined}
           >
             <div className="border-b border-border/40 px-3 py-2">
               <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">

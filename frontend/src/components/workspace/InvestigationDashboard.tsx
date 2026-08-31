@@ -94,7 +94,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{dashboard.subtitle}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {dashboard.kpis.map((kpi) => (
           <Card key={kpi.label} className="text-center">
             <CardContent className="pt-4">
@@ -238,7 +238,7 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
           <CardHeader>
             <SectionHeaderRow title={titles.trials_table || "Clinical trials"} />
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -283,22 +283,25 @@ export const InvestigationDashboard = memo(function InvestigationDashboard({
               }
             />
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
             {summary.rankings.slice(0, 5).map((r, i) => (
-              <div key={r.name} className="flex items-center gap-4 text-sm">
-                <span className="w-4 text-xs text-muted-foreground">{i + 1}</span>
-                <span className="flex-1">{r.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {r.phase?.replace("PHASE", "Ph ")}
-                </span>
-                <span className="text-xs text-muted-foreground">{r.trial_count} trials</span>
-                <span className="text-xs text-muted-foreground">PoS {r.pos_percent}%</span>
-                <span className="text-xs text-muted-foreground">
-                  Filing ~{r.estimated_filing_year}
-                </span>
-                <span className="w-12 text-right font-mono text-xs text-primary">
-                  {r.momentum_score}
-                </span>
+              <div
+                key={r.name}
+                className="flex flex-col gap-2 rounded-lg border border-border/40 p-3 text-sm sm:flex-row sm:items-center sm:gap-4 sm:border-0 sm:p-0"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="w-4 shrink-0 text-xs text-muted-foreground">{i + 1}</span>
+                  <span className="min-w-0 flex-1 font-medium sm:font-normal">{r.name}</span>
+                  <span className="shrink-0 font-mono text-xs text-primary sm:w-12 sm:text-right">
+                    {r.momentum_score}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 pl-7 text-xs text-muted-foreground sm:pl-0">
+                  <span>{r.phase?.replace("PHASE", "Ph ")}</span>
+                  <span>{r.trial_count} trials</span>
+                  <span>PoS {r.pos_percent}%</span>
+                  <span>Filing ~{r.estimated_filing_year}</span>
+                </div>
               </div>
             ))}
 

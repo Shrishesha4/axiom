@@ -107,7 +107,7 @@ export default function ProfilePage() {
 
   return (
     <ScrollContainer className="h-full">
-          <div className="mx-auto max-w-2xl px-6 py-10">
+          <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
             <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Manage your identity and view account usage.
